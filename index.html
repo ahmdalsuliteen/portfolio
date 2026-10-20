@@ -1,0 +1,2628 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>AHMED ALSULAITIN | Portfolio</title>
+<meta name="description" content="Portfolio — Photography, Projects & Certificates">
+<meta property="og:title" content="AHMED ALSULAITIN | Portfolio">
+<meta property="og:type" content="website">
+<meta property="og:description" content="Photography, Projects & Certificates">
+<meta name="theme-color" content="#0b0b0b">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%230b0b0b'/%3E%3Ctext x='50' y='68' font-size='58' font-family='Georgia,serif' font-style='italic' font-weight='900' fill='%23c0392b' text-anchor='middle'%3EA%3C/text%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;0,900;1,400;1,700&family=Cairo:wght@300;400;500;600;700;800;900&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+<!-- تجهيز مبكر لاتصال Firebase/Firestore عشان تقل مدة انتظار البيانات عند فتح الموقع أول مرة -->
+<link rel="preconnect" href="https://www.gstatic.com" crossorigin>
+<link rel="preconnect" href="https://firestore.googleapis.com" crossorigin>
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js">
+<link rel="modulepreload" href="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js">
+
+<!-- Firebase SDK -->
+<script type="module">
+  // استدعاء المكتبات بروابط مباشرة لتعمل على المتصفح
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, waitForPendingWrites, doc, setDoc, deleteDoc, onSnapshot, getDoc, collection } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+  import { getAuth, signInWithEmailAndPassword, onAuthStateChanged, signOut, updatePassword, EmailAuthProvider, reauthenticateWithCredential, setPersistence, browserSessionPersistence } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+  // إعدادات مشروعك الجديدة
+  const firebaseConfig = {
+    apiKey: "AIzaSyC0kGeMuNMgOHS87c1DBvnHuPhqnWBjVCY",
+    authDomain: "myofficalwebsite-25b0b.firebaseapp.com",
+    projectId: "myofficalwebsite-25b0b",
+    storageBucket: "myofficalwebsite-25b0b.firebasestorage.app",
+    messagingSenderId: "524164462833",
+    appId: "1:524164462833:web:dbbe7247814e8dbb54d150"
+  };
+
+  // تهيئة Firebase وقاعدة البيانات
+  const app = initializeApp(firebaseConfig);
+  // كاش دائم داخل المتصفح (IndexedDB): الزيارة الثانية تفتح فوراً من الجهاز، والسيرفر يرسل التغييرات فقط
+  let db;
+  try{ db = initializeFirestore(app, { localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }) }); }
+  catch(e){ db = getFirestore(app); }
+  const REF = doc(db, "portfolio", "main");
+
+  // رفع المتغيرات للوصول لها من جميع أنحاء الموقع
+  window._db  = db;
+  window._ref = REF;
+  window._setDoc = setDoc;
+  window._onSnapshot = onSnapshot;
+  window._getDoc = getDoc;
+  window._fbReady = true;
+
+  // ══ تخزين الصور — كل صورة بمستند Firestore منفصل (مجاني بالكامل، بدون Storage/Blaze) ══
+  // المشكلة الأصلية: كل الصور كانت تُخزَّن كنص base64 داخل مستند واحد، وFirestore عنده
+  // حد أقصى 1 ميجابايت للمستند، فكان الحفظ يفشل بصمت بمجرد إضافة عدة صور.
+  // الحل بدون أي فلوس: كل صورة تُحفظ بمستند منفصل بمجموعة "portfolio_images"، وبالمستند
+  // الرئيسي نخزن فقط "معرّف" قصير يشاور على الصورة — فحجم المستند الرئيسي يبقى صغير
+  // مهما كان عدد الصور. Firestore مجاني تماماً (بدون بطاقة) بحد سخي: 1GB تخزين.
+  const IMG_COL = collection(db, "portfolio_images");
+  window._imgDocRef = (id) => doc(IMG_COL, id);
+  window._setImgDoc = (id, base64) => setDoc(doc(IMG_COL, id), { data: base64 });
+  window._deleteImgDoc = (id) => deleteDoc(doc(IMG_COL, id)).catch(()=>{});
+  window._onImgCollectionSnapshot = (cb) => onSnapshot(IMG_COL, cb);
+  window._imgStoreReady = true;
+
+  // ══ Firebase Authentication — الكتابة بقاعدة البيانات محمية فعلياً بتسجيل دخول حقيقي ══
+  // قبل كذا كانت كلمة السر تتحقق محلياً بالمتصفح فقط، بينما قواعد Firestore كانت مفتوحة
+  // للكل. الحين قواعد Firestore تتطلب تسجيل دخول حقيقي (request.auth != null) للكتابة،
+  // وتسجيل الدخول هذا يتم عبر Firebase Authentication (بريد + كلمة سر) لا يمكن تجاوزه
+  // من الكونسول أو من الكود مباشرة.
+  const auth = getAuth(app);
+  setPersistence(auth, browserSessionPersistence).catch(()=>{});
+  window._signIn = (email, pass) => signInWithEmailAndPassword(auth, email, pass);
+  window._flush = () => waitForPendingWrites(db).catch(()=>{});
+  // لا نسجّل الخروج قبل ما تنتهي كل الكتابات المعلّقة (كانت تنقطع وتضيع الصور)
+  window._signOut = () => waitForPendingWrites(db).catch(()=>{}).then(()=>signOut(auth)).catch(()=>{});
+  window._onAuthChange = (cb) => onAuthStateChanged(auth, cb);
+  window._currentAuthEmail = () => (auth.currentUser ? auth.currentUser.email : null);
+  window._changePassword = async (currentPass, newPass) => {
+    const u = auth.currentUser;
+    if(!u) throw {code:'auth/requires-recent-login'};
+    // إعادة التحقق من الهوية أولاً (Firebase يطلبها قبل السماح بتغيير كلمة السر)
+    await reauthenticateWithCredential(u, EmailAuthProvider.credential(u.email, currentPass));
+    await updatePassword(u, newPass);
+  };
+  window._authReady = true;
+
+  // بدء الاستماع للتحديثات المباشرة بمجرد تحميل الصفحة
+  // نبدأ الاستماع فوراً بدون انتظار حدث load (كان يؤخر البيانات والصور لين تخلص الخطوط والموارد)
+  const _go = () => {
+    if (window._startListener) window._startListener();
+    if (window._startImgListener) window._startImgListener();
+  };
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _go); else _go();
+</script>
+
+<style>
+/* ══════════════════════════════
+   DESIGN TOKENS — all overridable by admin
+══════════════════════════════ */
+:root {
+  --black:   #0b0b0b;
+  --black2:  #141414;
+  --black3:  #1e1e1e;
+  --red:     #c0392b;
+  --red2:    #e74c3c;
+  --red-glow:rgba(192,57,43,.18);
+  --beige:   #e8dcc8;
+  --beige2:  #f4ede0;
+  --beige3:  #d4c4a8;
+  --muted:   #7a6e60;
+  --border:  rgba(232,220,200,.12);
+  --bdr:     rgba(192,57,43,.22);
+  /* font vars */
+  --fa: 'Cairo', sans-serif;
+  --fe: 'Playfair Display', serif;
+  --fm: 'Space Mono', monospace;
+  /* font sizes — admin adjustable */
+  --fs-body: 15px;
+  --fs-h1: clamp(50px,9.5vw,110px);
+  --fs-h2: clamp(26px,3.8vw,48px);
+  --fs-nav: 9px;
+  --fs-tag: 9px;
+  --fs-card: 14px;
+}
+*, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+html { scroll-behavior:smooth; }
+body {
+  background:var(--black);
+  color:var(--beige);
+  font-family:var(--fa);
+  font-size:var(--fs-body);
+  overflow-x:hidden;
+  cursor:none;
+}
+
+/* ── Custom Cursor ── */
+#cur, #cur2 { position:fixed; pointer-events:none; z-index:99999; transform:translate(-50%,-50%); border-radius:50%; }
+#cur  { width:8px; height:8px; background:var(--red); transition:width .2s,height .2s; }
+#cur2 { width:32px; height:32px; border:1px solid rgba(192,57,43,.5); transition:width .3s,height .3s; }
+body.hov #cur  { width:18px; height:18px; }
+body.hov #cur2 { width:52px; height:52px; }
+
+/* ── CANVAS background ── */
+#bg-canvas {
+  position:fixed; inset:0; z-index:0; pointer-events:none;
+  opacity:.7;
+}
+
+/* ── Noise overlay ── */
+body::after {
+  content:''; position:fixed; inset:0; z-index:1; pointer-events:none; opacity:.15;
+  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.04'/%3E%3C/svg%3E");
+}
+
+/* ── Loader ── */
+#loader {
+  position:fixed; inset:0; z-index:10000; background:var(--black);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:36px;
+  transition:opacity .9s, visibility .9s;
+}
+#loader.out { opacity:0; visibility:hidden; pointer-events:none; }
+.ld-logo { font-family:var(--fe); font-size:clamp(48px, 8vw, 86px); font-style:italic; color:var(--beige); letter-spacing:4px; animation:ldbreathe 2.4s ease-in-out infinite; }
+.ld-logo em { color:var(--red); font-style:normal; }
+@keyframes ldbreathe { 0%,100%{ text-shadow:0 0 0 transparent; } 50%{ text-shadow:0 0 30px rgba(192,57,43,.35); } }
+.ld-bar  { width:clamp(260px, 45vw, 420px); height:2px; background:var(--black3); overflow:hidden; border-radius:4px; }
+.ld-prog { position:relative; height:100%; width:40%; background:linear-gradient(90deg,var(--red),var(--beige)); animation:ldp 1.3s ease-in-out infinite; }
+@keyframes ldp { 0%{ transform:translateX(-100%); } 100%{ transform:translateX(350%); } }
+.ld-txt  { font-family:var(--fm); font-size:13px; letter-spacing:8px; color:var(--muted); text-transform:uppercase; }
+
+/* ── Nav ── */
+nav {
+  position:fixed; inset:0 0 auto; z-index:900;
+  padding:20px 60px;
+  display:grid; grid-template-columns:1fr auto 1fr; align-items:center;
+  background:linear-gradient(to bottom, rgba(11,11,11,.96), transparent);
+  backdrop-filter:blur(16px);
+  border-bottom:1px solid rgba(232,220,200,.04);
+}
+.nav-logo { font-family:var(--fa); font-size:22px; font-weight:800; color:var(--beige); cursor:none; justify-self:start; }
+.nav-logo em { color:var(--red); font-style:normal; font-weight:800; }
+.nav-links { display:flex; gap:32px; list-style:none; justify-self:center; }
+.nav-links a { font-family:var(--fm); font-size:9px; letter-spacing:2.5px; color:var(--muted); text-decoration:none; text-transform:uppercase; transition:color .3s; cursor:none; position:relative; padding-bottom:4px; }
+.nav-links a::after { content:''; position:absolute; bottom:0; right:0; width:0; height:1px; background:var(--red); transition:width .35s; }
+.nav-links a:hover { color:var(--beige); }
+.nav-links a:hover::after { width:100%; right:auto; left:0; }
+#nav-hbg { display:none; flex-direction:column; gap:5px; background:none; border:none; cursor:none; padding:2px; }
+#nav-hbg span { display:block; width:20px; height:1.5px; background:var(--beige); transition:all .3s; }
+#nav-hbg.x span:nth-child(1){ transform:translateY(6.5px) rotate(45deg); }
+#nav-hbg.x span:nth-child(2){ opacity:0; }
+#nav-hbg.x span:nth-child(3){ transform:translateY(-6.5px) rotate(-45deg); }
+
+/* Mobile nav drawer */
+#mob-nav {
+  position:fixed; inset:0; z-index:850;
+  background:rgba(11,11,11,.99);
+  display:flex; flex-direction:column; align-items:center; justify-content:center; gap:32px;
+  opacity:0; visibility:hidden; transition:opacity .4s, visibility .4s;
+}
+#mob-nav.open { opacity:1; visibility:visible; }
+#mob-nav a { font-family:var(--fe); font-size:clamp(26px,6vw,42px); font-style:italic; color:var(--beige); text-decoration:none; transition:color .3s; cursor:none; }
+#mob-nav a:hover { color:var(--red); }
+#mob-nav .mob-sub { font-family:var(--fm); font-size:9px; letter-spacing:4px; color:var(--red); text-transform:uppercase; margin-bottom:-20px; }
+
+/* ── Fixed UI ── */
+#lang-btn {
+  position:fixed; top:18px; left:18px; z-index:1000;
+  background:transparent; border:1px solid var(--border);
+  color:var(--muted); font-family:var(--fm); font-size:9px; letter-spacing:2px;
+  padding:6px 12px; cursor:none; transition:all .3s;
+}
+#lang-btn:hover { background:var(--red); color:var(--beige2); border-color:var(--red); }
+
+#adm-btn {
+  position:fixed; bottom:26px; left:26px; z-index:1000;
+  width:40px; height:40px; background:var(--black3);
+  border:1px solid var(--border); border-radius:50%;
+  display:flex; align-items:center; justify-content:center;
+  cursor:none; opacity:.25; transition:all .3s;
+}
+#adm-btn:hover { opacity:1; border-color:var(--red); }
+#adm-btn svg { width:15px; fill:var(--beige); }
+
+/* ═══════════ HERO ═══════════ */
+#hero {
+  position:relative; z-index:2;
+  min-height:100vh; min-height:100svh;
+  display:flex; flex-direction:column; align-items:center; justify-content:center;
+  padding:120px 64px 80px; text-align:center; overflow:hidden;
+}
+.hero-eyebrow { font-family:var(--fm); font-size:10px; letter-spacing:6px; color:var(--red); text-transform:uppercase; margin-bottom:18px; opacity:0; animation:fu .9s 1.1s forwards; }
+.hero-name    { font-family:var(--fe); font-size:var(--fs-h1); font-weight:900; font-style:italic; line-height:.86; opacity:0; animation:fu .9s 1.3s forwards; }
+.hero-name { transition: transform 0.2s ease-out; }
+.hero-name .solid { color:var(--beige); transition: text-shadow 0.4s; }
+.hero-name .outline { color:transparent; -webkit-text-stroke:2px var(--red); transition: all 0.4s; cursor:none; }
+.hero-name:hover .outline { color:var(--red); text-shadow:0 0 24px rgba(192,57,43,0.6); transform:scale(1.02); display:inline-block; }
+.hero-name:hover .solid { text-shadow:0 0 20px rgba(232,220,200,0.3); }
+
+.hero-deg     { font-size:clamp(13px,1.6vw,17px); font-weight:300; color:var(--muted); margin-top:22px; letter-spacing:1px; opacity:0; animation:fu .9s 1.5s forwards; transition: transform 0.2s ease-out; }
+.hero-chips   { display:flex; gap:10px; flex-wrap:wrap; justify-content:center; margin-top:24px; opacity:0; animation:fu .9s 1.7s forwards; transition: transform 0.2s ease-out; }
+.hero-chip    { font-family:var(--fm); font-size:8px; letter-spacing:2px; border:1px solid var(--bdr); padding:5px 13px; color:var(--beige3); text-transform:uppercase; transition:all 0.3s cubic-bezier(0.4, 0, 0.2, 1); position:relative; overflow:hidden; }
+.hero-chip:hover { background:var(--red); color:var(--beige2); transform:translateY(-4px) scale(1.05); box-shadow:0 8px 20px rgba(192,57,43,0.4); border-color:var(--red); }
+.hero-stats   { display:flex; gap:52px; margin-top:52px; opacity:0; animation:fu .9s 1.9s forwards; }
+.stt .n { font-family:var(--fe); font-size:38px; font-weight:900; color:var(--red); line-height:1; }
+.stt .l { font-family:var(--fm); font-size:9px; letter-spacing:2px; color:var(--muted); margin-top:5px; text-transform:uppercase; }
+.hero-scroll  { position:absolute; bottom:32px; display:flex; flex-direction:column; align-items:center; gap:8px; font-family:var(--fm); font-size:8px; letter-spacing:3px; color:var(--muted); opacity:0; animation:fu .9s 2.1s forwards; cursor:none; }
+.hero-scroll .line { width:1px; height:44px; background:linear-gradient(to bottom,var(--red),transparent); animation:sp 2s ease-in-out infinite; }
+@keyframes sp  { 0%,100%{transform:scaleY(1)}50%{transform:scaleY(.45)} }
+@keyframes fu  { from{opacity:0;transform:translateY(26px)}to{opacity:1;transform:none} }
+
+/* ══ SECTION BASE ══ */
+.sec { position:relative; z-index:2; padding:110px 64px; }
+.sec.alt { background:rgba(20,20,20,.8); backdrop-filter:blur(4px); }
+.sec-hd { margin-bottom:48px; }
+.stag { display:flex; align-items:center; gap:12px; font-family:var(--fm); font-size:9px; letter-spacing:5px; color:var(--red); text-transform:uppercase; margin-bottom:12px; }
+.stag::before { content:''; width:24px; height:1px; background:var(--red); flex-shrink:0; }
+.stitle { font-family:var(--fa); font-size:var(--fs-h2); font-weight:800; color:var(--beige2); line-height:1.1; letter-spacing:-.5px; }
+.sdesc { font-size:var(--fs-body); color:var(--muted); line-height:2; margin-top:12px; max-width:500px; }
+
+/* ══ EXPERIENCE TIMELINE ══ */
+.exp-timeline { position:relative; margin-top:48px; padding-right:32px; }
+/* vertical red line */
+.exp-timeline::before {
+  content:''; position:absolute; right:0; top:8px; bottom:8px;
+  width:2px; background:linear-gradient(to bottom, var(--red), transparent);
+}
+.exp-item { position:relative; margin-bottom:40px; padding-right:28px; }
+/* dot on the line */
+.exp-item::before {
+  content:''; position:absolute; right:-7px; top:16px;
+  width:14px; height:14px; border-radius:50%;
+  background:var(--black); border:2px solid var(--red);
+  transition:background .3s;
+}
+.exp-item:hover::before { background:var(--red); }
+.exp-card {
+  background:var(--black2); border:1px solid var(--border);
+  padding:22px 26px; transition:border-color .35s, transform .35s;
+  cursor:none; position:relative; overflow:hidden;
+}
+.exp-card:hover { border-color:var(--red); transform:translateX(-4px); }
+.exp-card::after {
+  content:''; position:absolute; top:0; bottom:0; right:0;
+  width:3px; background:var(--red);
+  transform:scaleY(0); transform-origin:bottom; transition:transform .35s;
+}
+.exp-card:hover::after { transform:scaleY(1); }
+.exp-top { display:flex; align-items:center; gap:14px; margin-bottom:12px; }
+.exp-logo {
+  width:44px; height:44px; border-radius:8px;
+  background:var(--black3); border:1px solid var(--border);
+  object-fit:contain; flex-shrink:0; display:flex;
+  align-items:center; justify-content:center; font-size:20px; overflow:hidden;
+}
+.exp-logo img { width:100%; height:100%; object-fit:contain; }
+.exp-info { flex:1; min-width:0; }
+.exp-title  { font-size:16px; font-weight:800; color:var(--beige2); line-height:1.2; }
+.exp-company{ font-family:var(--fm); font-size:9px; letter-spacing:2px; color:var(--red); text-transform:uppercase; margin-top:3px; }
+.exp-dates  { font-family:var(--fm); font-size:9px; color:var(--muted); letter-spacing:1px; margin-top:2px; }
+.exp-location { display:flex; align-items:center; gap:5px; font-size:12px; color:var(--muted); margin-top:8px; }
+.exp-location::before { content:'📍'; font-size:11px; }
+.exp-desc { font-size:13px; color:var(--muted); line-height:1.8; margin-top:10px; }
+.exp-duration {
+  position:absolute; top:14px; left:16px;
+  font-family:var(--fm); font-size:8px; letter-spacing:1px;
+  color:var(--muted); border:1px solid var(--border); padding:2px 8px;
+}
+
+/* ══ ADMIN COLOR PANEL ══ */
+.color-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(180px,1fr)); gap:14px; }
+.color-row  { display:flex; flex-direction:column; gap:6px; }
+.color-row label { font-family:var(--fm); font-size:8px; letter-spacing:1px; color:var(--muted); }
+.color-row input[type=color] { width:100%; height:36px; background:none; border:1px solid var(--border); cursor:pointer; padding:2px; }
+.color-row input[type=text]  { width:100%; background:var(--black); border:1px solid var(--border); color:var(--beige); padding:7px 10px; font-family:var(--fm); font-size:10px; margin-top:2px; }
+
+/* ══ ADMIN FONT PANEL ══ */
+.font-row { display:flex; flex-direction:column; gap:6px; margin-bottom:14px; }
+.font-row label { font-family:var(--fm); font-size:8px; letter-spacing:1px; color:var(--muted); }
+.font-row select, .font-row input[type=range] { width:100%; background:var(--black); border:1px solid var(--border); color:var(--beige); padding:8px 10px; font-family:var(--fm); font-size:10px; }
+.font-row input[type=range] { padding:4px 0; accent-color:var(--red); }
+.font-preview { font-size:22px; font-weight:800; color:var(--beige); margin-top:6px; padding:8px 0; border-bottom:1px solid var(--border); }
+
+
+/* ── Reveal ── */
+.rv { opacity:0; transform:translateY(30px); transition:opacity .9s cubic-bezier(.16,1,.3,1), transform .9s cubic-bezier(.16,1,.3,1); }
+.rv.on { opacity:1; transform:none; }
+
+/* ── Scroll progress bar ── */
+#scroll-bar { position:fixed; top:0; right:0; left:0; height:2px; z-index:9500; background:transparent; pointer-events:none; }
+#scroll-bar i { display:block; height:100%; width:0%; background:linear-gradient(90deg,var(--red),var(--beige3)); box-shadow:0 0 10px var(--red-glow); transition:width .1s linear; }
+
+/* ── Section title reveal: animated underline sweep ── */
+.stag::before { transform-origin:left; transform:scaleX(0); transition:transform .8s cubic-bezier(.16,1,.3,1) .1s; }
+[dir="rtl"] .stag::before { transform-origin:right; }
+.rv.on .stag::before { transform:scaleX(1); }
+.stitle { opacity:0; transform:translateY(14px); transition:opacity .8s cubic-bezier(.16,1,.3,1) .18s, transform .8s cubic-bezier(.16,1,.3,1) .18s; }
+.rv.on .stitle { opacity:1; transform:none; }
+.sdesc { opacity:0; transform:translateY(10px); transition:opacity .8s cubic-bezier(.16,1,.3,1) .3s, transform .8s cubic-bezier(.16,1,.3,1) .3s; }
+.rv.on .sdesc { opacity:1; transform:none; }
+
+/* ── Tilt-ready cards (JS sets --rx/--ry/--mx/--my) ── */
+.folder-card, .proj-card, .cert-card {
+  --rx:0deg; --ry:0deg;
+  transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry));
+  transition:border-color .35s, transform .12s ease-out, box-shadow .35s;
+  will-change:transform;
+}
+.folder-card:hover, .cert-card:hover { box-shadow:0 18px 40px -14px rgba(0,0,0,.55); }
+
+/* ── Shine sweep on hover (soft light following the cursor) ── */
+.folder-card, .proj-card { isolation:isolate; }
+.folder-card::after, .proj-card::after {
+  content:''; position:absolute; inset:0; pointer-events:none; z-index:3;
+  background:radial-gradient(180px circle at var(--mx,50%) var(--my,50%), rgba(232,220,200,.10), transparent 60%);
+  opacity:0; transition:opacity .4s;
+}
+.folder-card:hover::after, .proj-card:hover::after { opacity:1; }
+
+/* ── Magnetic elements ── */
+.magnet { transition:transform .25s cubic-bezier(.16,1,.3,1); display:inline-block; }
+
+/* ── Back to top ── */
+#totop {
+  position:fixed; bottom:26px; right:26px; z-index:1000;
+  width:44px; height:44px; border-radius:50%;
+  background:var(--black3); border:1px solid var(--border);
+  display:flex; align-items:center; justify-content:center;
+  cursor:none; opacity:0; visibility:hidden; transform:translateY(12px);
+  transition:opacity .35s, transform .35s, border-color .3s, visibility .35s;
+}
+#totop.show { opacity:1; visibility:visible; transform:none; }
+#totop:hover { border-color:var(--red); }
+#totop svg { width:16px; fill:var(--beige); transition:transform .3s; }
+#totop:hover svg { transform:translateY(-2px); }
+
+/* ── Image fade-in on load ── */
+img.imgfade { opacity:0; transition:opacity .6s ease; }
+img.imgfade.loaded { opacity:1; }
+
+/* ── Hero eyebrow micro shimmer ── */
+.hero-eyebrow { position:relative; }
+.hero-eyebrow::after {
+  content:''; position:absolute; inset:0;
+  background:linear-gradient(100deg,transparent 30%, rgba(232,220,200,.5) 50%, transparent 70%);
+  background-size:220% 100%; background-position:150% 0;
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  animation:shimmer 3.5s ease-in-out .9s infinite;
+}
+@keyframes shimmer { 0%,60%,100%{background-position:150% 0} 30%{background-position:-50% 0} }
+
+@media(max-width:767px){ #totop{bottom:18px;right:18px;width:38px;height:38px} }
+
+/* ══ 01 PHOTOGRAPHY ══ */
+.folders-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(270px,1fr)); gap:2px; margin-top:40px; }
+.folder-card { background:var(--black2); border:1px solid var(--border); overflow:hidden; cursor:none; position:relative; transition:border-color .4s; }
+.folder-card:hover { border-color:var(--red); }
+.f-thumb { height:215px; overflow:hidden; position:relative; }
+.f-thumb img { width:100%; height:100%; object-fit:cover; transition:transform .7s; display:block; }
+.folder-card:hover .f-thumb img { transform:scale(1.1); }
+.f-ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:linear-gradient(135deg,var(--black3),#111); font-size:50px; }
+.f-overlay { position:absolute; inset:0; background:linear-gradient(to top,rgba(192,57,43,.8),transparent 55%); opacity:0; transition:opacity .4s; display:flex; align-items:flex-end; padding:18px; }
+.folder-card:hover .f-overlay { opacity:1; }
+.f-open { font-family:var(--fm); font-size:9px; letter-spacing:3px; color:var(--beige2); text-transform:uppercase; }
+.f-meta { padding:16px 18px; display:flex; justify-content:space-between; align-items:center; border-top:1px solid var(--border); }
+.f-name { font-size:14px; font-weight:700; color:var(--beige); }
+.f-count { font-family:var(--fm); font-size:9px; color:var(--red); }
+
+/* ══ 02 GRADUATE ══ */
+.grad-layout { display:grid; grid-template-columns:270px 1fr; gap:40px; align-items:start; margin-top:40px; }
+.grad-id { background:var(--black); border:1px solid var(--border); padding:28px; position:relative; overflow:hidden; }
+.grad-id::after { content:''; position:absolute; bottom:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--red),transparent); }
+.g-av-ph { width:80px; height:80px; border-radius:50%; border:2px solid var(--red); display:flex; align-items:center; justify-content:center; font-size:32px; background:var(--black3); margin-bottom:16px; }
+.g-av { width:80px; height:80px; border-radius:50%; border:2px solid var(--red); object-fit:cover; display:block; margin-bottom:16px; }
+.g-name { font-family:var(--fe); font-size:20px; font-style:italic; color:var(--beige2); }
+.g-title { font-family:var(--fm); font-size:8px; letter-spacing:2px; color:var(--red); text-transform:uppercase; margin-top:4px; }
+.g-sep { width:100%; height:1px; background:var(--border); margin:16px 0; }
+.g-rows { display:flex; flex-direction:column; gap:10px; }
+.g-row { display:flex; gap:10px; }
+.g-ico { font-size:13px; margin-top:2px; flex-shrink:0; }
+.g-info { font-size:12px; color:var(--muted); line-height:1.5; }
+.g-info strong { color:var(--beige); display:block; font-size:12px; }
+.proj-list { display:flex; flex-direction:column; gap:12px; }
+.proj-card { background:var(--black); border:1px solid var(--border); padding:20px 24px; cursor:none; position:relative; overflow:hidden; transition:border-color .3s; }
+.proj-card:hover { border-color:var(--red); }
+.proj-card::before { content:''; position:absolute; left:0; top:0; width:3px; height:100%; background:var(--red); transform:scaleY(0); transform-origin:bottom; transition:transform .35s; }
+.proj-card:hover::before { transform:scaleY(1); }
+.proj-top { display:flex; justify-content:space-between; align-items:flex-start; gap:10px; margin-bottom:8px; }
+.proj-name { font-size:15px; font-weight:700; color:var(--beige2); }
+.proj-badge { font-family:var(--fm); font-size:8px; letter-spacing:1px; color:var(--red); border:1px solid var(--bdr); padding:3px 9px; white-space:nowrap; flex-shrink:0; }
+.proj-desc { font-size:12px; color:var(--muted); line-height:1.8; }
+.proj-tags { display:flex; gap:5px; flex-wrap:wrap; margin-top:10px; }
+.proj-tag { font-family:var(--fm); font-size:8px; color:var(--muted); border:1px solid rgba(255,255,255,.06); padding:2px 7px; }
+.proj-link { display:inline-flex; align-items:center; gap:8px; margin-top:14px; padding:7px 16px; font-family:var(--fm); font-size:10px; letter-spacing:1px; color:var(--beige2); background:transparent; border:1px solid var(--red); text-decoration:none; cursor:none; transition:background .25s,color .25s; }
+.proj-link:hover { background:var(--red); color:#fff; }
+.proj-link .arr { display:inline-block; transition:transform .25s; }
+.proj-link:hover .arr { transform:translate(-3px,-3px); }
+[dir="ltr"] .proj-link:hover .arr { transform:translate(3px,-3px); }
+/* ═══ حركة وتفاعل ═══ */
+#aurora { position:fixed; inset:0; z-index:0; pointer-events:none; overflow:hidden; }
+#aurora i { position:absolute; width:55vmax; height:55vmax; border-radius:50%; filter:blur(90px); opacity:.15; }
+#aurora i:nth-child(1){ background:radial-gradient(circle,var(--red),transparent 65%); top:-20vmax; left:-15vmax; animation:aur1 26s ease-in-out infinite alternate; }
+#aurora i:nth-child(2){ background:radial-gradient(circle,#b9714f,transparent 65%); bottom:-25vmax; right:-15vmax; opacity:.1; animation:aur2 32s ease-in-out infinite alternate; }
+@keyframes aur1 { to { transform:translate(40vmax,28vmax) scale(1.2); } }
+@keyframes aur2 { to { transform:translate(-38vmax,-24vmax) scale(1.15); } }
+.marq { position:relative; z-index:2; overflow:hidden; border-block:1px solid var(--border); padding:20px 0; background:rgba(0,0,0,.28); direction:ltr; }
+.mq-track { display:flex; width:max-content; will-change:transform; }
+.mq-track span { font:900 clamp(28px,5vw,58px)/1 var(--fe); font-style:italic; letter-spacing:2px; padding:0 26px; color:var(--beige); white-space:nowrap; text-transform:uppercase; }
+.mq-track span:nth-of-type(even) { color:transparent; -webkit-text-stroke:1.5px var(--red); }
+.mq-track i { display:inline-block; align-self:center; width:10px; height:10px; background:var(--red); transform:rotate(45deg); flex-shrink:0; }
+.rv:not(.on) :is(.folder-card,.proj-card,.cert-card) { opacity:0; }
+.rv.play :is(.folder-card,.proj-card,.cert-card) { animation:cardIn .9s cubic-bezier(.16,1,.3,1) calc(var(--i,0) * 80ms) backwards; }
+@keyframes cardIn { from { opacity:0; transform:translateY(46px) scale(.96); filter:blur(8px); clip-path:inset(0 0 40% 0); } to { opacity:1; transform:none; filter:none; clip-path:inset(0); } }
+.rv.on .stitle { animation:wipe 1.1s cubic-bezier(.16,1,.3,1) backwards; }
+@keyframes wipe { from { clip-path:inset(0 0 100% 0); transform:translateY(36px); } to { clip-path:inset(0 0 0 0); transform:none; } }
+.vring { position:fixed; width:10px; height:10px; margin:-5px 0 0 -5px; border:1.5px solid var(--red2); border-radius:50%; pointer-events:none; z-index:9995; animation:vring .7s ease-out forwards; }
+@keyframes vring { to { transform:scale(10); opacity:0; } }
+.hero-chip, .proj-link, .hero-scroll { transition-property:translate, background, color, box-shadow, border-color, transform; }
+/* أيقونات SVG */
+.ic { width:1em; height:1em; fill:none; stroke:currentColor; stroke-width:1.6; stroke-linecap:round; stroke-linejoin:round; vertical-align:-.14em; flex-shrink:0; }
+.g-ico { color:var(--red); font-size:17px !important; display:inline-flex; }
+.f-ph { color:var(--red); } .f-ph .ic { width:46px; height:46px; opacity:.55; stroke-width:1.2; }
+.cert-emoji { color:var(--red); } .cert-emoji .ic { width:34px; height:34px; stroke-width:1.3; }
+.proj-badge { display:inline-flex; align-items:center; gap:6px; } .proj-badge .ic { font-size:11px; }
+.f-meta > span { color:var(--red); display:inline-flex; }
+.exp-logo .ic { width:22px; height:22px; color:var(--muted); }
+.proj-card { transition:border-color .3s, transform .35s cubic-bezier(.16,1,.3,1); } .proj-card:hover { transform:translateY(-3px); }
+.pt-bar { display:flex; gap:3px; height:10px; margin:2px 0 18px; direction:ltr; }
+.pt-bar i { display:block; height:100%; background:var(--c); opacity:.9; transform-origin:left; transition:transform .9s cubic-bezier(.16,1,.3,1) var(--d,0ms); }
+.histo:not(.on) .pt-bar i { transform:scaleX(0); }
+.pt-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(170px,1fr)); gap:12px 24px; }
+.pt-row { display:flex; align-items:center; gap:10px; font:10px var(--fm); letter-spacing:1.5px; color:var(--muted); direction:ltr; }
+.pt-row .sw { width:8px; height:8px; background:var(--c); flex-shrink:0; }
+.pt-row .ic { font-size:14px; color:var(--beige3); } .pt-row b { color:var(--beige2); font-weight:400; margin-inline-start:auto; }
+/* هيستوغرام المعرض */
+.histo { margin-top:56px; border:1px solid var(--border); padding:22px 26px 18px; position:relative; background:linear-gradient(180deg,rgba(255,255,255,.02),transparent); }
+.histo:empty { display:none; }
+.histo .hs-top { display:flex; justify-content:space-between; gap:12px; font:9px var(--fm); letter-spacing:3px; color:var(--muted); text-transform:uppercase; margin-bottom:18px; }
+.histo .hs-top span:first-child { color:var(--red); }
+.hs-scroll { overflow-x:auto; direction:ltr; }
+.hs-scroll .hs-bars, .hs-scroll .hs-lbls { min-width:calc(var(--n,1) * 54px); }
+.hs-bars { display:flex; align-items:flex-end; gap:10px; height:150px; overflow:hidden; padding-bottom:2px; border-bottom:1px solid var(--border); direction:ltr; }
+.hs-col { flex:1 1 0; min-width:44px; height:100%; display:flex; flex-direction:column; justify-content:flex-end; align-items:center; cursor:none; position:relative; }
+.hs-col i { display:block; width:100%; height:var(--h); background:linear-gradient(180deg,var(--red2),var(--red)); opacity:.85; transform-origin:bottom; transition:transform .9s cubic-bezier(.16,1,.3,1) var(--d,0ms),opacity .25s; }
+.histo:not(.on) .hs-col i { transform:scaleY(0); }
+.hs-col:hover i { opacity:1; box-shadow:0 0 24px var(--red-glow); }
+.hs-col em { font:normal 10px var(--fm); color:var(--beige3); margin-bottom:6px; letter-spacing:1px; }
+.hs-lbls { display:flex; gap:10px; direction:ltr; margin-top:8px; }
+.hs-lbls span { flex:1 1 0; min-width:44px; text-align:center; font:8px var(--fm); letter-spacing:1px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.histo .hs-foot { margin-top:14px; font:10px var(--fm); letter-spacing:2px; color:var(--muted); }
+.histo .hs-foot b { color:var(--beige2); font-weight:400; }
+/* ═══ واجهة حيّة: حروف تتفاعل + تركيز الأدوار + كلمات تنساب ═══ */
+.hero-name { direction:ltr; unicode-bidi:isolate; text-align:center; }
+.hero-name .solid, .hero-name .outline { direction:ltr; unicode-bidi:isolate; }
+.hero-name .lt { display:inline-block; transform:translate(var(--mx,0px),var(--my,0px)) scale(var(--ms,1)); transition:transform .3s cubic-bezier(.2,.8,.2,1), text-shadow .3s; will-change:transform; }
+.hero-name .solid .lt { text-shadow:0 0 var(--gl,0px) rgba(232,220,200,.55); }
+#hero.fxin .hero-name .lt { animation:ltIn 1s cubic-bezier(.16,1,.3,1) calc(1.3s + var(--i) * 60ms) backwards; }
+@keyframes ltIn { from { opacity:0; transform:translateY(70%) rotate(9deg) scale(.6); filter:blur(12px); } to { opacity:1; transform:none; filter:none; } }
+.hero-name .outline .lt { animation:waveF 8s ease-in-out calc(3.2s + var(--i) * .2s) infinite; }
+#hero.fxin .hero-name .outline .lt { animation:ltIn 1s cubic-bezier(.16,1,.3,1) calc(1.3s + var(--i) * 60ms) backwards, waveF 8s ease-in-out calc(3.2s + var(--i) * .2s) infinite; }
+@keyframes waveF { 0%,14%,100% { color:transparent; text-shadow:none; } 7% { color:var(--red); text-shadow:0 0 26px var(--red-glow); } }
+.hero-name:hover .outline .lt { -webkit-text-fill-color:var(--red); text-shadow:0 0 24px var(--red-glow); }
+.hero-eyebrow { display:flex; justify-content:center; align-items:center; gap:14px; flex-wrap:wrap; }
+.hero-eyebrow .role { display:inline-block; cursor:none; opacity:.4; filter:blur(3px); transition:opacity .5s, filter .5s, color .5s, transform .5s; }
+.hero-eyebrow .role.on { opacity:1; filter:none; color:var(--red2); transform:scale(1.14); text-shadow:0 0 18px var(--red-glow); }
+.hero-eyebrow .role.on::before { content:'[ '; opacity:.6; } .hero-eyebrow .role.on::after { content:' ]'; opacity:.6; }
+.hero-eyebrow .sep { opacity:.35; font-style:normal; }
+.hero-deg .w { display:inline-block; }
+#hero.fxin .hero-deg .w { animation:wIn .9s cubic-bezier(.16,1,.3,1) calc(1.6s + var(--i) * 80ms) backwards; }
+@keyframes wIn { from { opacity:0; transform:translateY(16px); filter:blur(7px); } to { opacity:1; transform:none; filter:none; } }
+.h-spot { position:absolute; inset:0; pointer-events:none; mix-blend-mode:screen; background:radial-gradient(460px circle at var(--sx,50%) var(--sy,35%), rgba(192,57,43,.14), transparent 62%); transition:opacity .4s; }
+/* ═══ مقابض العدسة: إحصائيات الواجهة ═══ */
+.hero-stats { display:flex; justify-content:center; align-items:flex-start; gap:clamp(20px,5vw,52px); margin-top:46px; padding:0; width:auto; background:none; }
+.hero-stats::before, .hero-stats::after, .hero-stats .stt + .stt::before { display:none; }
+.hero-stats .stt { --d:112px; --p:0; position:relative; width:var(--d); text-align:center; cursor:none; }
+.hero-stats .dial { position:absolute; top:0; left:0; width:var(--d); height:var(--d); overflow:visible; pointer-events:none; }
+.dial circle { fill:none; }
+.d-ticks { stroke:var(--muted); stroke-width:6; stroke-dasharray:1.2 4.6; opacity:.5; transform-origin:center; animation:dspin 50s linear infinite; transition:opacity .35s; }
+.d-track { stroke:var(--border); stroke-width:1.5; }
+.d-arc { stroke:var(--red2); stroke-width:3; stroke-linecap:round; stroke-dasharray:100; stroke-dashoffset:calc((100 - var(--p)) * 1px); transform:rotate(-90deg); transform-origin:60px 60px; transition:stroke-dashoffset 1.8s cubic-bezier(.16,1,.3,1), stroke-width .3s; filter:drop-shadow(0 0 6px var(--red-glow)); }
+.hero-stats .stt .n { height:var(--d); display:flex; align-items:center; justify-content:center; font-size:40px; text-shadow:none; transition:transform .45s cubic-bezier(.34,1.56,.64,1); }
+.hero-stats .stt .l { margin-top:12px; }
+.hero-stats .stt:hover .n { transform:scale(1.15); }
+.hero-stats .stt:hover .d-ticks { opacity:1; animation-duration:6s; }
+.hero-stats .stt:hover .d-arc { stroke-width:4.5; }
+@keyframes dspin { to { transform:rotate(360deg); } }
+.rec-line { margin-top:30px; font:9px var(--fm); letter-spacing:3px; color:var(--muted); direction:ltr; text-align:center; opacity:0; animation:fu .9s 2.3s forwards; }
+.rec-line i { display:inline-block; width:7px; height:7px; border-radius:50%; background:var(--red2); margin-inline-end:8px; animation:recb 1.2s steps(2,start) infinite; }
+@keyframes recb { to { visibility:hidden; } }
+@media (max-width:480px){ .hero-stats .stt { --d:88px; } .hero-stats .stt .n { font-size:30px; } .hero-stats { gap:14px; } }
+#vf { position:fixed; left:0; top:0; width:64px; height:64px; pointer-events:none; z-index:9997; opacity:0; color:var(--beige); transition:opacity .3s,color .2s; will-change:transform,width,height; }
+#vf i { position:absolute; width:12px; height:12px; border:0 solid currentColor; }
+#vf .tl{top:0;left:0;border-top-width:1.5px;border-left-width:1.5px} #vf .tr{top:0;right:0;border-top-width:1.5px;border-right-width:1.5px}
+#vf .bl{bottom:0;left:0;border-bottom-width:1.5px;border-left-width:1.5px} #vf .br{bottom:0;right:0;border-bottom-width:1.5px;border-right-width:1.5px}
+#vf b { position:absolute; left:50%; top:50%; width:10px; height:10px; margin:-5px 0 0 -5px; opacity:.55; transition:opacity .2s; }
+#vf b::before,#vf b::after { content:''; position:absolute; background:currentColor; } #vf b::before{left:4.5px;top:0;width:1px;height:10px} #vf b::after{top:4.5px;left:0;height:1px;width:10px}
+#vf.lock { color:var(--red2); } #vf.lock b { opacity:0; }
+#vf .hud { position:absolute; left:0; top:100%; margin-top:8px; font:9px/1.5 var(--fm); letter-spacing:2px; white-space:nowrap; direction:ltr; color:var(--beige3); }
+#vf.lock .hud { color:var(--red2); }
+#vshot { position:fixed; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:9996; }
+#vshot.fire { animation:vshot .28s ease-out; } @keyframes vshot { 0%{opacity:.2} 100%{opacity:0} }
+@media (hover:none),(pointer:coarse){ #vf,#vshot{ display:none; } }
+#sprog { position:fixed; top:0; left:0; height:2px; width:100%; transform:scaleX(0); transform-origin:left; background:linear-gradient(90deg,var(--red),var(--beige)); z-index:9998; pointer-events:none; }
+[dir="rtl"] #sprog { transform-origin:right; }
+@media (prefers-reduced-motion:reduce){ *,*::before,*::after{ animation-duration:.01ms !important; animation-iteration-count:1 !important; transition-duration:.01ms !important; scroll-behavior:auto !important; } }
+.proj-imgs { display:flex; gap:5px; margin-top:10px; }
+.proj-img { width:55px; height:42px; object-fit:cover; border:1px solid var(--border); cursor:none; transition:border-color .3s; }
+.proj-img:hover { border-color:var(--red); }
+
+/* ══ 03 CERTIFICATES ══ */
+.cert-filter { display:flex; gap:6px; flex-wrap:wrap; margin:24px 0 32px; }
+.cfbtn { background:none; border:1px solid var(--border); color:var(--muted); font-family:var(--fm); font-size:8px; letter-spacing:2px; padding:5px 14px; cursor:none; transition:all .3s; text-transform:uppercase; }
+.cfbtn.on,.cfbtn:hover { background:var(--red); color:var(--beige2); border-color:var(--red); }
+.certs-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; }
+.cert-card { background:var(--black2); border:1px solid var(--border); padding:24px 28px; position:relative; overflow:hidden; transition:border-color .4s,transform .4s; cursor:none; }
+.cert-card:hover { border-color:var(--red); transform:perspective(900px) rotateX(var(--rx)) rotateY(var(--ry)) translateY(-4px); }
+.cert-card::after { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:linear-gradient(90deg,var(--red),transparent); opacity:0; transition:opacity .4s; }
+.cert-card:hover::after { opacity:1; }
+.cert-gl { position:absolute; top:0; right:0; width:80px; height:80px; background:radial-gradient(circle at top right,rgba(192,57,43,.09),transparent); pointer-events:none; }
+.cert-cat-tag { position:absolute; top:12px; left:12px; font-family:var(--fm); font-size:7px; letter-spacing:1px; color:var(--muted); border:1px solid var(--border); padding:2px 7px; }
+.cert-emoji { font-size:32px; margin-bottom:12px; display:block; }
+.cert-name { font-size:14px; font-weight:700; color:var(--beige2); margin-bottom:4px; }
+.cert-issuer { font-family:var(--fm); font-size:9px; letter-spacing:1px; color:var(--red); }
+.cert-date { font-size:11px; color:var(--muted); margin-top:4px; }
+.cert-img { margin-top:12px; width:100%; aspect-ratio:16/9; object-fit:cover; border:1px solid var(--border); cursor:none; display:block; transition:border-color .3s; }
+.cert-img:hover { border-color:var(--red); }
+
+/* ══ ABOUT ══ */
+.about-inner { display:grid; grid-template-columns:1fr 1fr; gap:72px; align-items:center; }
+.about-pw { position:relative; }
+.about-photo { width:100%; aspect-ratio:3/4; object-fit:cover; border:1px solid var(--border); display:block; }
+.about-ph { width:100%; aspect-ratio:3/4; background:var(--black3); border:1px solid var(--border); display:flex; align-items:center; justify-content:center; font-size:72px; color:var(--red); }
+.about-frame { position:absolute; top:16px; left:-16px; right:16px; bottom:-16px; border:1px solid var(--bdr); z-index:-1; }
+.about-bio { font-size:14px; color:var(--muted); line-height:2; margin-top:16px; }
+.skills-wrap { display:flex; flex-wrap:wrap; gap:7px; margin-top:22px; }
+.skill-chip { font-family:var(--fm); font-size:8px; letter-spacing:1px; border:1px solid var(--bdr); padding:4px 11px; color:var(--beige3); transition:all .3s; cursor:none; }
+.skill-chip:hover { background:var(--red); color:var(--beige2); border-color:var(--red); }
+
+/* ══ FOLDER VIEWER ══ */
+#fv { position:fixed; inset:0; z-index:5000; background:rgba(11,11,11,.98); display:none; flex-direction:column; }
+#fv.open { display:flex; }
+.fv-hd { display:flex; align-items:center; justify-content:space-between; padding:18px 36px; border-bottom:1px solid var(--border); }
+.fv-title { font-family:var(--fe); font-size:20px; font-style:italic; color:var(--beige2); }
+.fv-title em { color:var(--red); font-style:normal; }
+.fv-close { background:none; border:1px solid var(--border); color:var(--beige); font-family:var(--fm); font-size:9px; letter-spacing:2px; padding:7px 18px; cursor:none; transition:all .3s; }
+.fv-close:hover { background:var(--red); color:var(--beige2); border-color:var(--red); }
+.fv-grid { flex:1; overflow-y:auto; padding:40px; column-count:4; column-gap:24px; }
+.fv-item { display:inline-block; width:100%; margin-bottom:24px; break-inside:avoid; overflow:hidden; cursor:none; background:var(--black3); position:relative; border:1px solid rgba(232,220,200,.15); border-radius:6px; }
+.fv-item img { width:100%; height:auto; display:block; transition:transform .4s; }
+.fv-item:hover img { transform:scale(1.07); }
+.fv-empty { grid-column:1/-1; text-align:center; padding:80px; color:var(--muted); }
+
+/* ══ LIGHTBOX ══ */
+#lb { position:fixed; inset:0; z-index:6000; background:rgba(0,0,0,.97); display:none; align-items:center; justify-content:center; }
+#lb.open { display:flex; }
+#lb img { max-width:90vw; max-height:90vh; object-fit:contain; display:block; }
+#lb-x { position:absolute; top:18px; right:18px; background:none; border:1px solid var(--border); color:var(--beige); width:36px; height:36px; display:flex; align-items:center; justify-content:center; cursor:none; transition:all .3s; font-size:16px; }
+#lb .lb-nav { position:absolute; top:50%; transform:translateY(-50%); width:46px; height:46px; background:rgba(0,0,0,.45); border:1px solid var(--border); color:var(--beige); font-size:20px; display:flex; align-items:center; justify-content:center; cursor:none; transition:background .25s,border-color .25s; z-index:2; }
+#lb .lb-nav:hover { background:var(--red); border-color:var(--red); }
+#lb-prev { left:18px; } #lb-next { right:18px; }
+#lb-cnt { position:absolute; bottom:20px; left:50%; transform:translateX(-50%); font-family:var(--fm); font-size:11px; letter-spacing:4px; color:var(--muted); direction:ltr; }
+#lb.single .lb-nav, #lb.single #lb-cnt { display:none; }
+#lb img { transition:opacity .25s; } #lb img.sw { opacity:0; }
+.proj-list { counter-reset:pj; }
+.proj-card { counter-increment:pj; }
+.proj-name::before { content:counter(pj,decimal-leading-zero) ' / '; color:var(--red); font-family:var(--fm); font-size:10px; letter-spacing:2px; margin-inline-end:6px; }
+.proj-link::before { content:''; width:6px; height:6px; border-radius:50%; background:#2ecc71; box-shadow:0 0 0 0 rgba(46,204,113,.6); animation:livep 1.8s infinite; }
+@keyframes livep { 70%{ box-shadow:0 0 0 7px rgba(46,204,113,0); } 100%{ box-shadow:0 0 0 0 rgba(46,204,113,0); } }
+#lb-x:hover { background:var(--red); border-color:var(--red); }
+
+/* ══ FOOTER ══ */
+footer { position:relative; z-index:2; padding:64px; background:var(--black); border-top:1px solid var(--border); display:flex; flex-direction:column; align-items:center; gap:24px; }
+footer::before { content:''; display:block; width:50px; height:2px; background:var(--red); }
+.ft-logo { font-family:var(--fa); font-size:26px; font-weight:800; color:var(--beige); }
+.ft-logo em { color:var(--red); font-style:normal; font-weight:800; }
+.ft-socs { display:flex; gap:10px; }
+.fsoc { width:38px; height:38px; border:1px solid var(--border); display:flex; align-items:center; justify-content:center; text-decoration:none; transition:all .3s; cursor:none; border-radius: 8px; }
+
+/* إيميل - أحمر */
+.fsoc.email { color: #ea4335; border-color: rgba(234,67,53,0.3); }
+.fsoc.email:hover { background: #ea4335; color: #fff; box-shadow: 0 0 12px rgba(234,67,53,0.4); border-color:transparent; }
+
+/* لينكدإن - أزرق */
+.fsoc.linkedin { color: #0077b5; border-color: rgba(0,119,181,0.3); }
+.fsoc.linkedin:hover { background: #0077b5; color: #fff; box-shadow: 0 0 12px rgba(0,119,181,0.4); border-color:transparent; }
+
+/* منصة X - أبيض/أسود */
+.fsoc.twitter { color: #e8dcc8; border-color: rgba(232,220,200,0.3); }
+.fsoc.twitter:hover { background: #e8dcc8; color: #0b0b0b; box-shadow: 0 0 12px rgba(232,220,200,0.4); border-color:transparent; }
+
+/* إنستقرام - متدرج */
+.fsoc.insta { color: #e1306c; border-color: rgba(225,48,108,0.3); }
+.fsoc.insta:hover { background: linear-gradient(45deg, #f09433 0%, #e6683c 25%, #dc2743 50%, #cc2366 75%, #bc1888 100%); color: #fff; border-color: transparent; box-shadow: 0 0 12px rgba(225,48,108,0.4); }
+.ft-nav { display:flex; gap:24px; }
+.ft-nav a { font-family:var(--fm); font-size:8px; letter-spacing:2px; color:var(--muted); text-decoration:none; transition:color .3s; cursor:none; text-transform:uppercase; }
+.ft-nav a:hover { color:var(--red); }
+.ft-cr { font-family:var(--fm); font-size:8px; letter-spacing:2px; color:var(--muted); }
+
+/* ══ LOGIN ══ */
+#lm { position:fixed; inset:0; z-index:7000; background:rgba(0,0,0,.94); display:none; align-items:center; justify-content:center; }
+#lm.open { display:flex; }
+.lbox { background:var(--black2); border:1px solid var(--border); padding:44px; width:min(340px,calc(100vw - 28px)); position:relative; }
+.lbox::before { content:''; position:absolute; top:0; left:0; right:0; height:2px; background:var(--red); }
+.ltitle { font-family:var(--fe); font-size:22px; font-style:italic; color:var(--beige2); margin-bottom:24px; text-align:center; }
+.lerr { background:rgba(192,57,43,.13); border:1px solid var(--bdr); color:var(--red2); font-size:11px; padding:8px 12px; margin-bottom:10px; display:none; font-family:var(--fm); letter-spacing:.5px; }
+.lx { position:absolute; top:12px; left:12px; background:none; border:none; color:var(--muted); font-size:16px; cursor:none; transition:color .3s; }
+.lx:hover { color:var(--red); }
+.af label { display:block; font-family:var(--fm); font-size:8px; letter-spacing:1px; color:var(--muted); margin-bottom:5px; margin-top:12px; }
+.af input, .af textarea, .af select { width:100%; background:var(--black); border:1px solid var(--border); color:var(--beige); padding:10px 13px; font-family:var(--fa); font-size:13px; transition:border-color .3s; }
+.af input:focus, .af textarea:focus, .af select:focus { outline:none; border-color:var(--red); }
+.af textarea { min-height:82px; resize:vertical; }
+.af input[type=file] { font-size:10px; color:var(--muted); padding:7px; }
+
+/* ══ ADMIN PANEL ══ */
+#ap { position:fixed; inset:0; z-index:8000; background:var(--black); display:none; flex-direction:column; overflow-y:auto; }
+#ap.open { display:flex; }
+.atop { display:flex; align-items:center; justify-content:space-between; padding:18px 36px; background:var(--black2); border-bottom:1px solid var(--border); position:sticky; top:0; z-index:10; }
+.atop::after { content:''; position:absolute; bottom:0; left:0; width:100%; height:2px; background:linear-gradient(90deg,var(--red),transparent); }
+.atitle { font-family:var(--fe); font-size:17px; font-style:italic; color:var(--beige2); }
+.abody { padding:36px; display:flex; flex-direction:column; gap:40px; }
+.astr { font-family:var(--fm); font-size:8px; letter-spacing:4px; color:var(--red); text-transform:uppercase; padding-bottom:10px; border-bottom:1px solid var(--border); margin-bottom:18px; }
+.abtn { background:var(--red); color:var(--beige2); border:none; padding:10px 22px; font-family:var(--fm); font-size:8px; letter-spacing:2px; text-transform:uppercase; cursor:none; transition:all .3s; }
+.abtn:hover { background:var(--red2); }
+.abtn.g { background:#1a6b3a; } .abtn.g:hover { background:#22874a; }
+.abtn.dk { background:var(--black3); color:var(--beige); border:1px solid var(--border); } .abtn.dk:hover { background:var(--black2); }
+.alist { display:flex; flex-direction:column; gap:8px; margin-top:10px; }
+.aitem { background:var(--black3); border:1px solid var(--border); padding:11px 14px; display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.aitem-n { font-size:12px; font-weight:600; color:var(--beige); }
+.adel { background:none; border:1px solid var(--bdr); color:var(--red2); font-family:var(--fm); font-size:7px; letter-spacing:1px; padding:4px 9px; cursor:none; transition:all .3s; flex-shrink:0; }
+.adel:hover { background:var(--red); color:var(--beige2); border-color:var(--red); }
+.ag2 { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.save-status { font-family:var(--fm); font-size:9px; letter-spacing:2px; color:var(--muted); opacity:0; transition:opacity .4s; }
+.save-status.show { opacity:1; }
+
+/* ══ RESPONSIVE ══ */
+@media(max-width:1199px){
+  nav,.sec,footer,.atop,.abody{padding-right:40px;padding-left:40px}
+  #hero{padding:100px 40px 80px}
+  .grad-layout{grid-template-columns:250px 1fr;gap:28px}
+}
+@media(max-width:1023px){
+  nav{padding:14px 22px}.nav-links{display:none}#nav-hbg{display:flex}
+  .sec,#about-sec{padding:76px 22px}footer{padding:52px 22px 24px}#hero{padding:96px 22px 72px}
+  .grad-layout{grid-template-columns:1fr}
+  .grad-id{display:grid;grid-template-columns:auto 1fr;gap:20px;align-items:start}
+  .g-av,.g-av-ph{margin-bottom:0}
+  .g-sep{display:none}
+  .about-inner{grid-template-columns:1fr;gap:36px}
+  .about-pw{max-width:320px;margin:0 auto}.about-frame{display:none}
+  .ag2{grid-template-columns:1fr}
+  .abody{padding:20px}.atop{padding:14px 20px}
+}
+@media(max-width:767px){
+  #cur,#cur2{display:none}body{cursor:auto}
+  nav{padding:12px 16px}#lang-btn{top:12px;left:12px;font-size:8px;padding:5px 9px}
+  #adm-btn{bottom:18px;left:18px;width:36px;height:36px}
+  .sec{padding:60px 16px}#hero{padding:84px 16px 64px}footer{padding:44px 16px 20px}
+  .hero-stats{gap:20px;flex-wrap:wrap;justify-content:center}
+  .stt .n{font-size:30px}
+  .folders-grid{grid-template-columns:repeat(2,1fr)}
+  .f-thumb{height:155px}
+  .certs-grid{grid-template-columns:1fr;gap:10px}
+  .about-pw{max-width:260px}
+  .ft-nav{flex-wrap:wrap;gap:14px;justify-content:center}
+}
+@media(max-width:479px){
+  .folders-grid{grid-template-columns:1fr}
+  .f-thumb{height:195px}
+  .hero-stats{gap:16px}
+  .stt .n{font-size:26px}
+  .cert-filter{overflow-x:auto;flex-wrap:nowrap;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+  .fv-grid { column-count:2; column-gap:12px; padding:16px; }
+.fv-item { margin-bottom:12px; }
+  .proj-top{flex-direction:column;gap:6px}
+}
+
+/* ══ ADMIN v2 — sidebar layout ══ */
+#ap{flex-direction:row;overflow:hidden}
+.asb{width:248px;flex-shrink:0;background:var(--black2);border-inline-end:1px solid var(--border);display:flex;flex-direction:column;padding:22px 14px;gap:4px;overflow-y:auto}
+.abrand{font-family:var(--fe);font-style:italic;font-size:19px;color:var(--beige2);padding:4px 10px 12px}.abrand em{color:var(--red);font-style:normal}
+.agrp{font-family:var(--fm);font-size:8px;letter-spacing:3px;color:var(--muted);padding:16px 10px 6px}
+.anav{display:flex;align-items:center;gap:10px;width:100%;background:none;border:1px solid transparent;border-radius:8px;color:var(--beige3);font-family:var(--fa);font-size:13px;font-weight:600;padding:10px 12px;cursor:none;text-align:start;transition:.25s}
+.anav:hover{background:var(--black3)}.anav.on{background:var(--red-glow);border-color:var(--bdr);color:var(--beige2)}
+.abdg{margin-inline-start:auto;font-family:var(--fm);font-size:9px;color:var(--muted);background:var(--black);padding:2px 8px;border-radius:10px}
+.amain{flex:1;min-width:0;height:100%;overflow-y:auto}
+.atop{padding:14px 32px}.abody{padding:28px 32px 70px;max-width:1080px;margin:0 auto;gap:0}
+.apane{display:none}.apane.on{display:block;animation:apin .35s ease}
+@keyframes apin{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.apane>div,.acard{background:var(--black2);border:1px solid var(--border);border-radius:12px;padding:24px;margin-bottom:20px}
+.apane>.ovs{background:none;border:0;padding:0}
+.ovs{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px}
+.ovc{background:var(--black2);border:1px solid var(--border);border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:4px;align-items:flex-start;color:var(--beige);font-family:var(--fa);cursor:none;transition:.25s}
+.ovc:hover{border-color:var(--red);transform:translateY(-3px)}.ovc span{font-size:20px}.ovc b{font-family:var(--fm);font-size:30px;color:var(--beige2)}.ovc small{color:var(--muted);font-size:11px}
+.qa{display:flex;flex-wrap:wrap;gap:10px}
+.pbar{height:6px;background:var(--black3);border-radius:4px;overflow:hidden;margin:4px 0 10px}.pbar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--red),var(--beige));transition:width .6s}
+.chk{display:flex;align-items:center;gap:10px;width:100%;background:none;border:0;border-bottom:1px solid var(--border);color:var(--beige);font-family:var(--fa);font-size:13px;padding:10px 0;cursor:none;text-align:start}
+.chk i{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-style:normal;font-size:11px;background:#1a6b3a;flex-shrink:0}.chk.no i{background:var(--red)}.chk.no{color:var(--beige3)}
+.asubs{display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap}
+.asubbtn{background:var(--black2);border:1px solid var(--border);border-radius:20px;color:var(--beige3);font-family:var(--fa);font-size:12px;font-weight:600;padding:8px 16px;cursor:none;transition:.25s}
+.asubbtn.on{background:var(--red);border-color:var(--red);color:var(--beige2)}
+.asub{display:none}.asub.on{display:block}
+.aitem{border-radius:8px;transition:border-color .25s}.aitem:hover{border-color:var(--bdr)}
+@media(max-width:1023px){
+#ap{flex-direction:column}.asb{width:auto;flex-direction:row;overflow-x:auto;overflow-y:hidden;padding:8px 10px;gap:6px;border-inline-end:0;border-bottom:1px solid var(--border)}
+.abrand,.agrp,.abdg{display:none}.anav{white-space:nowrap;width:auto;padding:8px 12px;flex-shrink:0}
+.amain{height:auto;flex:1}.atop{padding:12px 16px}.abody{padding:16px 14px 60px}.apane>div,.acard{padding:16px}
+}
+</style>
+</head>
+<body>
+
+<!-- Cursor -->
+<div id="cur"></div>
+<div id="cur2"></div>
+
+<!-- Scroll Progress -->
+<div id="scroll-bar"><i id="scroll-bar-i"></i></div>
+
+<!-- Back to top -->
+<button id="totop" onclick="window.scrollTo({top:0,behavior:'smooth'})" title="Back to top">
+  <svg viewBox="0 0 24 24"><path d="M12 4l-8 8h5v8h6v-8h5z"/></svg>
+</button>
+
+<!-- Animated Canvas Background -->
+<canvas id="bg-canvas"></canvas>
+
+<!-- Loader -->
+<div id="loader">
+  <div class="ld-logo">Port<em>folio</em></div>
+  <div class="ld-bar"><div class="ld-prog"></div></div>
+  <div class="ld-txt">Loading Experience</div>
+</div>
+
+<!-- Fixed UI -->
+<button id="lang-btn" onclick="toggleLang()">EN / AR</button>
+<div id="adm-btn" onclick="openLogin()" title="Admin">
+  <svg viewBox="0 0 24 24"><path d="M12 2a5 5 0 1 0 0 10A5 5 0 0 0 12 2zm0 12c-5.33 0-8 2.67-8 4v2h16v-2c0-1.33-2.67-4-8-4z"/></svg>
+</div>
+
+<!-- Nav -->
+<nav>
+  <div class="nav-logo" id="nav-name">Port<em>folio</em></div>
+  <ul class="nav-links">
+    <li><a href="#photography" data-ar="التصوير"    data-en="Photography">التصوير</a></li>
+    <li><a href="#graduate"    data-ar="خريج جامعي" data-en="Graduate">خريج جامعي</a></li>
+    <li><a href="#certificates"data-ar="الشهادات"   data-en="Certificates">الشهادات</a></li>
+    <li><a href="#experience"   data-ar="الخبرات"    data-en="Experience">الخبرات</a></li>
+    <li><a href="#about-sec"   data-ar="عني"        data-en="About">عني</a></li>
+  </ul>
+  <button id="nav-hbg" onclick="toggleMobNav()" aria-label="Menu">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- Mobile Drawer -->
+<div id="mob-nav">
+  <div class="mob-sub" data-ar="القائمة" data-en="Menu">القائمة</div>
+  <a href="#photography"  onclick="closeMobNav()" data-ar="التصوير"    data-en="Photography">التصوير</a>
+  <a href="#graduate"     onclick="closeMobNav()" data-ar="خريج جامعي" data-en="Graduate">خريج جامعي</a>
+  <a href="#certificates" onclick="closeMobNav()" data-ar="الشهادات"   data-en="Certificates">الشهادات</a>
+  <a href="#experience"   onclick="closeMobNav()" data-ar="الخبرات"    data-en="Experience">الخبرات</a>
+  <a href="#about-sec"    onclick="closeMobNav()" data-ar="عني"        data-en="About">عني</a>
+</div>
+
+<!-- ═══ HERO ═══ -->
+<section id="hero">
+  <div class="hero-eyebrow" id="hero-tag">مصور · خريج نظم معلومات إدارية</div>
+  <h1 class="hero-name">
+    <span class="solid" id="hero-n1">Visual</span><br>
+    <span class="outline" id="hero-n2">Portfolio</span>
+  </h1>
+  <p class="hero-deg" id="hero-deg">بكالوريس نظم معلومات إدارية · مصور فوتوغرافي</p>
+  <div class="hero-chips">
+    <span class="hero-chip" data-ar="تصوير فوتوغرافي" data-en="Photography">تصوير فوتوغرافي</span>
+    <span class="hero-chip" data-ar="نظم معلومات"     data-en="Info Systems">نظم معلومات</span>
+    <span class="hero-chip" data-ar="تحليل بيانات"    data-en="Data Analysis">تحليل بيانات</span>
+  </div>
+  <div class="hero-stats">
+    <div class="stt"><div class="n" id="sph">0</div><div class="l" data-ar="ألبوم"  data-en="Albums">ألبوم</div></div>
+    <div class="stt"><div class="n" id="spr">0</div><div class="l" data-ar="مشروع" data-en="Projects">مشروع</div></div>
+    <div class="stt"><div class="n" id="sct">0</div><div class="l" data-ar="شهادة" data-en="Certs">شهادة</div></div>
+  </div>
+  <div class="hero-scroll" onclick="document.getElementById('photography').scrollIntoView({behavior:'smooth'})">
+    <div class="line"></div><span>SCROLL</span>
+  </div>
+</section>
+
+<!-- ═══ 01 PHOTOGRAPHY ═══ -->
+<section id="photography" class="sec rv">
+  <div class="sec-hd">
+    <div class="stag" data-ar="01 — التصوير الفوتوغرافي" data-en="01 — Photography">01 — التصوير الفوتوغرافي</div>
+    <h2 class="stitle" id="ptitle">التصوير الفوتوغرافي</h2>
+    <p class="sdesc" id="pdesc">مجموعة ألبوماتي — اضغط لتستعرض الصور.</p>
+  </div>
+  <div class="folders-grid rv" id="folders-grid"></div>
+  <div class="histo rv" id="histo"></div>
+</section>
+
+<!-- ═══ 02 GRADUATE ═══ -->
+<section id="graduate" class="sec alt rv">
+  <div class="sec-hd">
+    <div class="stag" data-ar="02 — خريج جامعي" data-en="02 — Graduate">02 — خريج جامعي</div>
+    <h2 class="stitle" id="gtitle">خريج بكالوريس — نظم معلومات إدارية</h2>
+    <p class="sdesc" id="gdesc">مشاريع ومهام التدريب — كل مشروع يعكس مهارة حقيقية.</p>
+  </div>
+  <div class="grad-layout rv">
+    <div class="grad-id">
+      <div id="g-av-wrap"><div class="g-av-ph">🎓</div></div>
+      <div class="g-name" id="gc-name">اسمك هنا</div>
+      <div class="g-title" id="gc-title">MIS Graduate · Visual Creator</div>
+      <div class="g-sep"></div>
+      <div class="g-rows" id="gc-rows"></div>
+    </div>
+    <div class="proj-list" id="proj-list"></div>
+    <div class="histo rv" id="ptypes"></div>
+  </div>
+</section>
+
+<!-- ═══ 03 CERTIFICATES ═══ -->
+<section id="certificates" class="sec rv">
+  <div class="sec-hd">
+    <div class="stag" data-ar="03 — الشهادات والكورسات" data-en="03 — Certificates">03 — الشهادات والكورسات</div>
+    <h2 class="stitle" id="ctitle">الشهادات والكورسات</h2>
+    <p class="sdesc" id="cdesc">شهادات وكورسات لتطوير مهاراتي المهنية والتقنية.</p>
+  </div>
+  <div class="cert-filter rv" id="cert-filter"></div>
+  <div class="certs-grid rv" id="certs-grid"></div>
+</section>
+
+<!-- ═══ 04 EXPERIENCE ═══ -->
+<section id="experience" class="sec alt rv">
+  <div class="sec-hd">
+    <div class="stag" data-ar="04 — الخبرات" data-en="04 — Experience">04 — الخبرات</div>
+    <h2 class="stitle" id="etitle">الخبرات</h2>
+    <p class="sdesc" id="edesc">مسيرتي المهنية من الأحدث إلى الأقدم.</p>
+  </div>
+  <div class="exp-timeline rv" id="exp-timeline"></div>
+</section>
+
+<!-- ═══ ABOUT ═══ -->
+<section id="about-sec" class="sec alt rv">
+  <div class="about-inner rv">
+    <div class="about-pw">
+      <div id="about-ph-el" class="about-ph">📸</div>
+      <div class="about-frame"></div>
+    </div>
+    <div>
+      <div class="stag" data-ar="عني" data-en="About Me">عني</div>
+      <h2 class="stitle" id="about-name-el">اسمك هنا</h2>
+      <p class="about-bio" id="about-bio-el">مصور فوتوغرافي وخريج نظم معلومات إدارية.</p>
+      <div class="skills-wrap" id="skills-wrap"></div>
+    </div>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer>
+  <div class="ft-logo" id="ft-logo">Port<em>folio</em></div>
+  <div class="ft-socs">
+    <a class="fsoc email" id="fs-em" href="mailto:ahmdalsuliteen@gmail.com" target="_blank" title="Email">
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4l-8 5-8-5V6l8 5 8-5v2z"/></svg>
+    </a>
+    <a class="fsoc linkedin" id="fs-li" href="https://linkedin.com/in/ahmdalsuliteen" target="_blank" title="LinkedIn">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M19 0h-14c-2.761 0-5 2.239-5 5v14c0 2.761 2.239 5 5 5h14c2.762 0 5-2.239 5-5v-14c0-2.761-2.238-5-5-5zm-11 19h-3v-11h3v11zm-1.5-12.268c-.966 0-1.75-.79-1.75-1.764s.784-1.764 1.75-1.764 1.75.79 1.75 1.764-.783 1.764-1.75 1.764zm13.5 12.268h-3v-5.604c0-3.368-4-3.113-4 0v5.604h-3v-11h3v1.765c1.396-2.586 7-2.777 7 2.476v6.759z"/></svg>
+    </a>
+    <a class="fsoc twitter" id="fs-tw" href="#" target="_blank" title="X (Twitter)">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+    </a>
+    <a class="fsoc insta" id="fs-ig" href="#" target="_blank" title="Instagram">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 100 12.324 6.162 6.162 0 000-12.324zM12 16a4 4 0 110-8 4 4 0 010 8zm6.406-11.845a1.44 1.44 0 100 2.881 1.44 1.44 0 000-2.881z"/></svg>
+    </a>
+  </div>
+  <nav class="ft-nav">
+    <a href="#photography"  data-ar="التصوير"    data-en="Photography">التصوير</a>
+    <a href="#graduate"     data-ar="خريج جامعي" data-en="Graduate">خريج جامعي</a>
+    <a href="#certificates" data-ar="الشهادات"   data-en="Certificates">الشهادات</a>
+    <a href="#experience"   data-ar="الخبرات"    data-en="Experience">الخبرات</a>
+  </nav>
+  <div class="ft-cr" id="ft-cr">© 2025 Portfolio. All rights reserved.</div>
+</footer>
+
+<!-- Folder Viewer -->
+<div id="fv">
+  <div class="fv-hd">
+    <div class="fv-title" id="fv-title">Album</div>
+    <button class="fv-close" onclick="closeFV()">✕ CLOSE</button>
+  </div>
+  <div class="fv-grid" id="fv-grid"></div>
+</div>
+
+<!-- Lightbox -->
+<div id="lb" onclick="closeLB()">
+  <button id="lb-x">✕</button>
+  <button class="lb-nav" id="lb-prev" onclick="event.stopPropagation();lbStep(-1)" aria-label="Previous">‹</button>
+  <button class="lb-nav" id="lb-next" onclick="event.stopPropagation();lbStep(1)" aria-label="Next">›</button>
+  <img id="lb-img" src="" alt="" onclick="event.stopPropagation()">
+  <div id="lb-cnt"></div>
+</div>
+
+<!-- Login Modal -->
+<div id="lm">
+  <div class="lbox">
+    <button class="lx" onclick="closeLM()">✕</button>
+    <div class="ltitle">Admin Access</div>
+    <div class="lerr" id="lerr"></div>
+    <div class="af">
+      <label>Email</label>
+      <input type="email" id="lemail" placeholder="you@example.com" autocomplete="username" onkeydown="if(event.key==='Enter')document.getElementById('lpass').focus()">
+      <label>Password / كلمة السر</label>
+      <input type="password" id="lpass" placeholder="••••••••" autocomplete="current-password" onkeydown="if(event.key==='Enter')doLogin()">
+      <br><br>
+      <button class="abtn" id="lbtn" onclick="doLogin()" style="width:100%;text-align:center;padding:12px">دخول / Enter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════ ADMIN PANEL ═══════════ -->
+<div id="ap">
+<aside class="asb"><div class="abrand">Admin<em>.</em>Panel</div>
+<div class="agrp">GENERAL</div><button class="anav on" data-t="overview" onclick="goTab('overview')">📊 نظرة عامة</button>
+<div class="agrp">المحتوى</div><button class="anav" data-t="profile" onclick="goTab('profile')">👤 الملف الشخصي</button><button class="anav" data-t="photo" onclick="goTab('photo')">📁 التصوير<span class=abdg id=b-photo></span></button><button class="anav" data-t="projects" onclick="goTab('projects')">🎓 المشاريع<span class=abdg id=b-projects></span></button><button class="anav" data-t="certs" onclick="goTab('certs')">🏅 الشهادات<span class=abdg id=b-certs></span></button><button class="anav" data-t="exp" onclick="goTab('exp')">💼 الخبرات<span class=abdg id=b-exp></span></button>
+<div class="agrp">التخصيص</div><button class="anav" data-t="look" onclick="goTab('look')">🎨 المظهر</button><button class="anav" data-t="sec" onclick="goTab('sec')">🔐 الأمان</button></aside>
+<main class="amain"><div class="atop"><div class="atitle" id="a-ptitle"></div>
+<div style="display:flex;gap:10px;align-items:center"><span class="save-status" id="save-status">✓ Saved</span>
+<button class="abtn g" id="save-all-btn" onclick="saveAll()" title="Ctrl+S">💾 حفظ الكل</button><button class="abtn dk" onclick="closeAdmin()">✕ خروج</button></div></div>
+<div class="abody">
+<section class="apane" id="pane-overview"><div class="ovs" id="ov-stats"></div>
+<div class="acard"><div class="astr">⚡ إجراءات سريعة</div><div class="qa">
+<button class="abtn" onclick="qa('photo',0,'af-ar')">+ ألبوم</button><button class="abtn" onclick="qa('photo',1,'af-sel')">+ صور</button>
+<button class="abtn" onclick="qa('projects',0,'aw-ar')">+ مشروع</button><button class="abtn" onclick="qa('certs',0,'ac-ar')">+ شهادة</button>
+<button class="abtn" onclick="qa('exp',0,'ax-title-ar')">+ خبرة</button><button class="abtn dk" onclick="closeAdmin()">👁 معاينة الموقع</button></div></div>
+<div class="acard"><div class="astr">✅ جاهزية الموقع <span id="ov-pct" style="float:left"></span></div><div class="pbar"><i id="ov-bar"></i></div><div id="ov-chk"></div></div></section><section class="apane" id="pane-profile"><div>
+      <div class="astr">👤 الملف الشخصي / Profile</div>
+      <div class="ag2 af">
+        <div>
+          <label>الاسم</label><input type="text" id="ap-name">
+          <label>العنوان (EN)</label><input type="text" id="ap-title">
+          <label>الجامعة</label><input type="text" id="ap-uni">
+          <label>سنة التخرج</label><input type="text" id="ap-year">
+          <label>الموقع</label><input type="text" id="ap-loc">
+          <label>نبذة شخصية</label><textarea id="ap-bio"></textarea>
+          <label>مهارات (مفصولة بفاصلة)</label><input type="text" id="ap-skills">
+          <label>Hero Tag (AR)</label><input type="text" id="ap-htag">
+        </div>
+        <div>
+          <label>صورة شخصية (URL أو ارفع)</label>
+          <input type="text" id="ap-photo">
+          <input type="file" id="ap-photo-f" accept="image/*" onchange="f2i(this,'ap-photo')">
+          <label>Instagram URL</label><input type="text" id="ap-ig">
+          <label>Twitter URL</label><input type="text" id="ap-tw">
+          <label>LinkedIn URL</label><input type="text" id="ap-li">
+          <label>Hero Name Line 1</label><input type="text" id="ap-hn1" placeholder="Visual">
+          <label>Hero Name Line 2</label><input type="text" id="ap-hn2" placeholder="Portfolio">
+        </div>
+      </div>
+    </div></section><section class="apane" id="pane-photo"><nav class="asubs"><button class="asubbtn on" onclick="goSub(0)">📁 المجلدات</button><button class="asubbtn" onclick="goSub(1)">🖼 إضافة صور</button><button class="asubbtn" onclick="goSub(2)">⚙️ إدارة الألبوم</button></nav><div class="asub on">
+      <div class="astr">📁 مجلدات التصوير / Folders</div>
+      <div class="af">
+        <div class="ag2">
+          <div><label>اسم المجلد (AR)</label><input type="text" id="af-ar"></div>
+          <div><label>اسم المجلد (EN)</label><input type="text" id="af-en"></div>
+        </div>
+        <label>إيموجي</label><input type="text" id="af-emoji" placeholder="📷" style="width:64px">
+        <label>صورة الغلاف (URL أو ارفع)</label>
+        <input type="text" id="af-cover">
+        <input type="file" id="af-cover-f" accept="image/*" onchange="f2i(this,'af-cover')">
+        <button class="abtn" onclick="addFolder()" style="margin-top:8px">+ إضافة مجلد</button>
+      </div>
+      <div class="alist" id="al-folders"></div>
+      </div><div class="asub"><div class="astr">🖼 إضافة صور لمجلد</div>
+      <div class="af">
+        <label>اختر المجلد</label><select id="af-sel"></select>
+        <label>URLs (مفصولة بخط | )</label>
+        <input type="text" id="af-imgs">
+        <label>أو ارفع صور</label>
+        <input type="file" id="af-imgs-f" accept="image/*" multiple onchange="mf2i(this,'af-imgs')">
+        <button class="abtn" onclick="addFolderImgs()" style="margin-top:8px">+ أضف الصور</button>
+      </div>
+
+      </div><div class="asub"><div class="astr">⚙️ إدارة الألبوم (تغيير الغلاف وحذف صور)</div>
+      <div class="af">
+        <label>اختر المجلد للتعديل</label>
+        <select id="af-edit-sel" onchange="renderFolderEditor()"></select>
+        
+        <div class="ag2" style="margin-top:10px">
+          <div><label>تحديث الاسم (AR)</label><input type="text" id="af-edit-ar"></div>
+          <div><label>تحديث الاسم (EN)</label><input type="text" id="af-edit-en"></div>
+        </div>
+        <div class="ag2" style="margin-top:10px">
+          <div>
+            <label>تحديث الغلاف (URL أو ارفع)</label>
+            <input type="text" id="af-edit-cover">
+            <input type="file" id="af-edit-cover-f" accept="image/*" onchange="f2i(this,'af-edit-cover')">
+          </div>
+          <div>
+            <label>تحديث الإيموجي</label>
+            <input type="text" id="af-edit-emoji" style="width:64px">
+          </div>
+        </div>
+        <button class="abtn" onclick="updateFolderMeta()" style="margin-top:8px">💾 حفظ التعديلات</button>
+        <button class="abtn" onclick="syncImages()" style="margin-top:8px;background:transparent;border:1px solid var(--border)">🔄 مزامنة الصور مع السيرفر</button>
+  
+        <label style="margin-top:16px">صور الألبوم (اضغط على ❌ لحذف الصورة)</label>
+        <div id="af-edit-imgs" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;background:var(--black3);padding:10px;border:1px solid var(--border);border-radius:4px;min-height:60px">
+          </div>
+      </div>
+      </div></section><section class="apane" id="pane-projects"><div>
+      <div class="astr">🎓 المشاريع والأعمال / Projects</div>
+      <div class="af">
+        <div class="ag2">
+          <div><label>اسم المشروع (AR)</label><input type="text" id="aw-ar"></div>
+          <div><label>اسم المشروع (EN)</label><input type="text" id="aw-en"></div>
+        </div>
+        <label>وصف مختصر</label><textarea id="aw-desc"></textarea>
+        <label>النوع</label>
+        <select id="aw-type">
+          <option value="Website">Website</option><option value="Excel">Excel</option>
+          <option value="PowerPoint">PowerPoint</option><option value="Database">Database</option>
+          <option value="Report">Report</option><option value="Design">Design</option>
+          <option value="App">App</option><option value="Other">Other</option>
+        </select>
+        <label>رابط المشروع (اختياري)</label><input type="text" id="aw-url" placeholder="https://example.com" dir="ltr">
+        <label>تاقات (مفصولة بفاصلة)</label><input type="text" id="aw-tags">
+        <label>صور (URLs أو ارفع)</label>
+        <input type="text" id="aw-imgs">
+        <input type="file" id="aw-imgs-f" accept="image/*" multiple onchange="mf2i(this,'aw-imgs')">
+        <button class="abtn" id="btn-aw" onclick="addProject()" style="margin-top:8px">+ إضافة مشروع</button>
+        <button class="abtn" id="cancel-aw" onclick="cancelEdit('projects')" style="margin-top:8px;display:none;background:transparent;border:1px solid var(--border)">إلغاء التعديل</button>
+      </div>
+      <div class="alist" id="al-projects"></div>
+    </div></section><section class="apane" id="pane-certs"><div>
+      <div class="astr">🏅 الشهادات / Certificates</div>
+      <div class="af">
+        <div class="ag2">
+          <div><label>اسم الشهادة (AR)</label><input type="text" id="ac-ar"></div>
+          <div><label>اسم الشهادة (EN)</label><input type="text" id="ac-en"></div>
+        </div>
+        <label>الجهة المانحة</label><input type="text" id="ac-issuer">
+        <label>التاريخ</label><input type="text" id="ac-date">
+        <label>الفئة</label><input type="text" id="ac-cat">
+        <label>إيموجي</label><input type="text" id="ac-emoji" placeholder="🎓" style="width:64px">
+        <label>صورة الشهادة (URL أو ارفع)</label>
+        <input type="text" id="ac-img">
+        <input type="file" id="ac-img-f" accept="image/*" onchange="f2i(this,'ac-img')">
+        <button class="abtn" id="btn-ac" onclick="addCert()" style="margin-top:8px">+ إضافة شهادة</button>
+        <button class="abtn" id="cancel-ac" onclick="cancelEdit('certs')" style="margin-top:8px;display:none;background:transparent;border:1px solid var(--border)">إلغاء التعديل</button>
+      </div>
+      <div class="alist" id="al-certs"></div>
+    </div></section><section class="apane" id="pane-exp"><div>
+      <div class="astr">💼 الخبرات / Experience</div>
+      <div class="af">
+        <div class="ag2">
+          <div><label>المسمى الوظيفي (AR)</label><input type="text" id="ax-title-ar" placeholder="مصور فوتوغرافي"></div>
+          <div><label>المسمى الوظيفي (EN)</label><input type="text" id="ax-title-en" placeholder="Photographer"></div>
+        </div>
+        <div class="ag2">
+          <div><label>الشركة / المكان</label><input type="text" id="ax-company" placeholder="اسم الشركة"></div>
+          <div><label>الموقع / المدينة</label><input type="text" id="ax-location" placeholder="الرياض، السعودية"></div>
+        </div>
+        <div class="ag2">
+          <div><label>تاريخ البداية</label><input type="text" id="ax-start" placeholder="يناير 2024"></div>
+          <div><label>تاريخ النهاية</label><input type="text" id="ax-end" placeholder="حتى الآن / يونيو 2024"></div>
+        </div>
+        <label>وصف الخبرة</label><textarea id="ax-desc" placeholder="وصف مختصر عن دورك ومسؤولياتك..."></textarea>
+        <label>شعار الشركة (URL أو ارفع)</label>
+        <input type="text" id="ax-logo" placeholder="https://...">
+        <input type="file" id="ax-logo-f" accept="image/*" onchange="f2i(this,'ax-logo')">
+        <button class="abtn" id="btn-ax" onclick="addExp()" style="margin-top:10px">+ إضافة خبرة</button>
+        <button class="abtn" id="cancel-ax" onclick="cancelEdit('exp')" style="margin-top:10px;display:none;background:transparent;border:1px solid var(--border)">إلغاء التعديل</button>
+      </div>
+      <div class="alist" id="al-exp"></div>
+    </div></section><section class="apane" id="pane-look"><div>
+      <div class="astr">🎨 الألوان / Colors</div>
+      <div class="color-grid">
+        <div class="color-row">
+          <label>لون الخلفية الرئيسية</label>
+          <input type="color" id="cc-black"  oninput="liveColor('--black',this.value)">
+          <input type="text"  id="ct-black"  oninput="applyColorText('--black',this)">
+        </div>
+        <div class="color-row">
+          <label>لون الأسطح (الكروت)</label>
+          <input type="color" id="cc-black2" oninput="liveColor('--black2',this.value)">
+          <input type="text"  id="ct-black2" oninput="applyColorText('--black2',this)">
+        </div>
+        <div class="color-row">
+          <label>لون الأحمر (accent)</label>
+          <input type="color" id="cc-red"    oninput="liveColor('--red',this.value);liveColorAlpha()">
+          <input type="text"  id="ct-red"    oninput="applyColorText('--red',this);liveColorAlpha()">
+        </div>
+        <div class="color-row">
+          <label>لون الأحمر (hover)</label>
+          <input type="color" id="cc-red2"   oninput="liveColor('--red2',this.value)">
+          <input type="text"  id="ct-red2"   oninput="applyColorText('--red2',this)">
+        </div>
+        <div class="color-row">
+          <label>لون البيج (نصوص)</label>
+          <input type="color" id="cc-beige"  oninput="liveColor('--beige',this.value)">
+          <input type="text"  id="ct-beige"  oninput="applyColorText('--beige',this)">
+        </div>
+        <div class="color-row">
+          <label>لون البيج الفاتح</label>
+          <input type="color" id="cc-beige2" oninput="liveColor('--beige2',this.value)">
+          <input type="text"  id="ct-beige2" oninput="applyColorText('--beige2',this)">
+        </div>
+        <div class="color-row">
+          <label>لون النصوص الثانوية</label>
+          <input type="color" id="cc-muted"  oninput="liveColor('--muted',this.value)">
+          <input type="text"  id="ct-muted"  oninput="applyColorText('--muted',this)">
+        </div>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="abtn" onclick="saveColors()">💾 حفظ الألوان</button>
+        <button class="abtn dk" onclick="resetColors()">↩ إعادة تعيين الافتراضية</button>
+      </div>
+    </div><div>
+      <div class="astr">🔤 الخطوط / Typography</div>
+      <div class="font-row">
+        <label>الخط العربي</label>
+        <select id="ff-arabic" onchange="liveFontAr(this.value)">
+          <option value="Cairo">Cairo (الافتراضي — حديث وقوي)</option>
+          <option value="Tajawal">Tajawal</option>
+          <option value="Noto Sans Arabic">Noto Sans Arabic</option>
+          <option value="IBM Plex Sans Arabic">IBM Plex Sans Arabic</option>
+          <option value="Rubik">Rubik</option>
+        </select>
+        <div class="font-preview" id="fp-arabic">نظم المعلومات الإدارية</div>
+      </div>
+      <div class="font-row">
+        <label>الخط الإنجليزي (العناوين)</label>
+        <select id="ff-english" onchange="liveFontEn(this.value)">
+          <option value="Playfair Display">Playfair Display (الافتراضي)</option>
+          <option value="Cormorant Garamond">Cormorant Garamond</option>
+          <option value="Libre Baskerville">Libre Baskerville</option>
+          <option value="DM Serif Display">DM Serif Display</option>
+        </select>
+        <div class="font-preview" id="fp-english" style="font-family:var(--fe);font-style:italic">Visual Portfolio</div>
+      </div>
+      <div class="font-row">
+        <label>حجم النص الأساسي: <span id="fs-body-val">15</span>px</label>
+        <input type="range" id="fs-body-r" min="12" max="20" value="15" oninput="liveFontSize('--fs-body',this.value+'px');document.getElementById('fs-body-val').textContent=this.value">
+      </div>
+      <button class="abtn" onclick="saveFonts()" style="margin-top:8px">💾 حفظ الخطوط</button>
+    </div></section><section class="apane" id="pane-sec"><div>
+      <div class="astr">🔐 تغيير كلمة السر / Change Password</div>
+      <div class="af" style="max-width:360px">
+        <label>كلمة السر الحالية</label><input type="password" id="cp-cur">
+        <label>كلمة السر الجديدة</label><input type="password" id="cp-new">
+        <label>تأكيد كلمة السر الجديدة</label><input type="password" id="cp-con">
+        <br><button class="abtn" onclick="changePass()" style="margin-top:8px">تحديث كلمة السر</button>
+        <div id="cp-msg" style="font-family:var(--fm);font-size:9px;margin-top:8px;letter-spacing:1px"></div>
+      </div>
+    </div></section>
+</div></main></div>
+
+<!-- ═══════════════════════════════════
+     JAVASCRIPT
+═══════════════════════════════════ -->
+<script>
+// ════════════════════════════════════
+// SECURITY — runs immediately, before anything else
+// ════════════════════════════════════
+(function SHIELD(){
+  // 1. Disable right-click
+  document.addEventListener('contextmenu', e => e.preventDefault());
+
+  // 2. Block DevTools keyboard shortcuts
+  document.addEventListener('keydown', e => {
+    const k = e.key.toLowerCase();
+    if (e.key === 'F12') { e.preventDefault(); return; }
+    if ((e.ctrlKey||e.metaKey) && e.shiftKey && ['i','j','c','k'].includes(k)) { e.preventDefault(); return; }
+    if ((e.ctrlKey||e.metaKey) && k === 'u') { e.preventDefault(); return; }
+  });
+
+  // 3. DevTools open detection — force session end
+  let _dtOpen = false;
+  setInterval(() => {
+    const open = (window.outerWidth - window.innerWidth > 160) ||
+                 (window.outerHeight - window.innerHeight > 160);
+    if (open && !_dtOpen) { _dtOpen = true; if (window._endSession) window._endSession(); }
+    if (!open) _dtOpen = false;
+  }, 900);
+
+  // 4. Disable text selection on sensitive areas (nav, admin btn)
+  document.addEventListener('selectstart', e => {
+    if (e.target.closest('nav, #adm-btn, #admin-btn')) e.preventDefault();
+  });
+})();
+
+// ════════════════════════════════════
+// AUTH — Firebase Authentication الحقيقي (بريد + كلمة سر)
+// ════════════════════════════════════
+// Brute-force protection (طبقة إضافية محلية فوق حماية Firebase)
+let _fails = 0, _locked = false, _lockUntil = 0;
+const MAX_FAIL = 5, LOCK_SEC = 30;
+
+// Session token (in-memory only — clears on refresh/close/hide)
+let _SESSION = null;
+function genToken(){ return Math.random().toString(36).slice(2) + Date.now().toString(36); }
+function isAuth(){ return _SESSION !== null; }
+
+window._endSession = function(){
+  _SESSION = null;
+  if(window._signOut) window._signOut(); // يسجّل خروج فعلي من Firebase حتى تنقفل صلاحية الكتابة تماماً
+  closeAdmin();
+};
+
+// Clear session when tab hidden or closed
+document.addEventListener('visibilitychange', () => { if(document.hidden && isAuth()) window._endSession(); });
+window.addEventListener('beforeunload', () => { _SESSION = null; });
+
+const AUTH_ERR_AR = {
+  'auth/invalid-email':'البريد الإلكتروني غير صالح',
+  'auth/user-not-found':'هذا الحساب غير موجود',
+  'auth/wrong-password':'كلمة السر غلط',
+  'auth/invalid-credential':'البريد أو كلمة السر غلط',
+  'auth/too-many-requests':'محاولات كثيرة من Firebase — حاول لاحقاً',
+  'auth/network-request-failed':'تحقق من اتصال الإنترنت'
+};
+
+async function tryLogin(email, raw){
+  // Check lockout
+  if(_locked){
+    const rem = Math.ceil((_lockUntil - Date.now())/1000);
+    if(rem > 0){
+      showErr(`🔒 محاولات كثيرة — انتظر ${rem}ث`);
+      return false;
+    }
+    _locked = false; _fails = 0;
+  }
+  if(!window._authReady || !window._signIn){
+    showErr('⚠ نظام الدخول غير متاح الآن، حدّث الصفحة وحاول');
+    return false;
+  }
+  try{
+    await window._signIn(email, raw);
+    _fails = 0; _SESSION = genToken();
+    return true;
+  } catch(e){
+    _fails++;
+    const base = AUTH_ERR_AR[e.code] || 'فشل تسجيل الدخول';
+    if(_fails >= MAX_FAIL){ _locked = true; _lockUntil = Date.now() + LOCK_SEC*1000; }
+    showErr(`❌ ${base}${_fails>=MAX_FAIL ? ` — قُفل ${LOCK_SEC}ث`:''}`);
+    return false;
+  }
+}
+function showErr(msg){ const e=document.getElementById('lerr'); e.textContent=msg; e.style.display='block'; }
+
+// ════════════════════════════════════
+// DATA (CV Information)
+// ════════════════════════════════════
+let data = {
+  profile:{
+    name:'أحمد السليطين', titleEn:'MIS Graduate · Data Analyst',
+    uni:'جامعة الإمام عبدالرحمن بن فيصل', year:'2026', loc:'الخبر، السعودية',
+    bio:'خريج نظم معلومات إدارية (GPA: 4.05/5.00) مع خبرة عملية في مجموعة Haka في الدعم الفني، وتطوير المواقع، وتحليل البيانات. قمت ببناء أنظمة فعلية تشمل نظام تذاكر تقني، وقاعدة بيانات مالية، والموقع الرسمي للشركة. متمكن من Power BI، Tableau، SQL، والإكسيل المتقدم.',
+    photo:'', ig:'#', tw:'#', li:'https://linkedin.com/in/ahmdalsuliteen',
+    skills:['HTML/CSS/JS','SQL & Python','Power BI & Tableau','Excel (Advanced)','MS Access','Miro & GitHub'],
+    htag:'محلل بيانات · مطور ويب · مصور',
+    hn1:'Ahmed', hn2:'Alsuliteen',
+  },
+  folders:[
+    {id:1,ar:'تصوير ركاز',en:'Rikaz Photography',emoji:'⛏️',cover:'',images:[]},
+    {id:2,ar:'تصوير إيفنت',en:'Event Photography',emoji:'🎪',cover:'',images:[]},
+    {id:3,ar:'بورتريه',en:'Portrait',emoji:'🤍',cover:'',images:[]},
+  ],
+  projects:[
+    {id:1,ar:'موقع مجموعة Haka',en:'Haka Group Website',desc:'برمجة وتطوير الموقع الرسمي للشركة من الصفر باستخدام HTML/CSS/JS، بانتظار اعتماد الرئيس التنفيذي.',type:'Website',tags:['HTML','CSS','JS'],images:[]},
+    {id:2,ar:'نظام تذاكر الدعم الفني',en:'IT Ticketing System',desc:'تطوير نظام تذاكر مخصص لجميع الأقسام لرفع وتتبع المشاكل التقنية، مع تصميم مسار العمل بالكامل عبر Miro.',type:'App',tags:['Workflow','Miro'],images:[]},
+    {id:3,ar:'نظام الشيكات البنكية (بنك الرياض)',en:'Riyad Bank Cheque System',desc:'تصميم وتطوير نموذج Excel ديناميكي محمي بكلمة مرور لطباعة الشيكات، مستخدم حالياً في بيئة العمل الحقيقية.',type:'Excel',tags:['Excel','Finance'],images:[]},
+    {id:4,ar:'قاعدة بيانات الإدارة المالية',en:'Finance Database',desc:'بناء قاعدة بيانات Access تشمل نماذج إدخال وتقارير الشيكات لتحويل العمليات الورقية إلى رقمية.',type:'Database',tags:['MS Access','Data Entry'],images:[]},
+    {id:5,ar:'لوحة تحكم ميزانية المشاريع',en:'Budget Dashboard',desc:'إنشاء لوحة تحكم تفاعلية عبر Excel لتحليل وعرض ميزانية مشاريع شركة Artal (الداخلية والخارجية).',type:'Excel',tags:['Data Analysis','Dashboard'],images:[]},
+  ],
+  certs:[
+    {id:1,ar:'Excel Fundamentals',en:'Excel Fundamentals',issuer:'DataCamp',date:'Apr 2026',cat:'بيانات',emoji:'📊',img:''},
+    {id:2,ar:'Data Analysis in Excel',en:'Data Analysis in Excel',issuer:'DataCamp',date:'Oct 2025',cat:'بيانات',emoji:'📈',img:''},
+    {id:3,ar:'Power BI 101, 102, 103',en:'Power BI Intermediate',issuer:'Tuwaiq Academy',date:'2025',cat:'بيانات',emoji:'📊',img:''},
+    {id:4,ar:'Data Visualization using Tableau',en:'Tableau Visualization',issuer:'Tuwaiq Academy',date:'2025',cat:'بيانات',emoji:'📉',img:''},
+    {id:5,ar:'Intermediate SQL',en:'Intermediate SQL',issuer:'DataCamp',date:'2025',cat:'بيانات',emoji:'🗄️',img:''},
+  ],
+  experience:[
+    {id:1,titleAr:'متدرب تقنية المعلومات (Co-op)',titleEn:'IT Intern (Co-op)',company:'مجموعة Haka',location:'الخبر، السعودية',start:'يناير',end:'مايو 2026',desc:'بناء موقع الشركة الرسمي، وتطوير نظام تذاكر تقني، وإنشاء قواعد بيانات Access ولوحات تحكم Excel للإدارة المالية. إدارة بيانات الأراضي في بوابة Rkaz وتدريب الموظفين.',logo:''},
+    {id:2,titleAr:'نائب الرئيس - فريق BADB',titleEn:'Deputy President - BADB',company:'جامعة الإمام عبدالرحمن بن فيصل',location:'الدمام، السعودية',start:'فصل دراسي',end:'',desc:'إدارة أكثر من 15 عضواً في لجان التصميم والتصوير. تقديم دورات تدريبية للطلاب في تحليل البيانات والتصوير باستخدام Power BI و Tableau.',logo:''},
+  ],
+  colors:{
+    black:'#0b0b0b',black2:'#141414',black3:'#1e1e1e',
+    red:'#c0392b',red2:'#e74c3c',
+    beige:'#e8dcc8',beige2:'#f4ede0',beige3:'#d4c4a8',muted:'#7a6e60'
+  },
+  fonts:{ arabic:'Cairo', english:'Playfair Display', bodySize:'15px' }
+};
+
+// ════════════════════════════════════
+// FIREBASE — Smart Sync
+// ════════════════════════════════════
+let _unsubscribe = null;
+
+// يتتبّع أول وصول فعلي للبيانات من Firestore، حتى ما نعرض للزائر بيانات
+// افتراضية قديمة (مثل عدد الألبومات/الشهادات الأولي) قبل ما تصل البيانات الحقيقية
+let _firstDataReady = false;
+let _firstDataResolvers = [];
+function _onFirstDataReady(cb){ if(_firstDataReady) cb(); else _firstDataResolvers.push(cb); }
+function _markFirstDataReady(){ if(_firstDataReady) return; _firstDataReady = true; _firstDataResolvers.forEach(cb=>cb()); _firstDataResolvers = []; }
+
+window._startListener = function(){
+  if(!window._fbReady || !window._onSnapshot || !window._ref) return;
+  _unsubscribe = window._onSnapshot(window._ref, snap => {
+    if(snap.exists()){
+      const remote = snap.data();
+
+      // ندمج كل أقسام البيانات القادمة من السيرفر (كلها، مو بس بعضها) —
+      // هذا يمنع مسح الملف الشخصي/الشهادات/المشاريع/الخبرات عند كل تحميل صفحة
+      if(remote.profile)    data.profile    = remote.profile;
+      if(remote.folders)    data.folders    = remote.folders;
+      if(remote.projects)   data.projects   = remote.projects;
+      if(remote.certs)      data.certs      = remote.certs;
+      if(remote.experience) data.experience = remote.experience;
+      if(remote.colors)     data.colors     = remote.colors;
+      if(remote.fonts)      data.fonts      = remote.fonts;
+
+      // نخزّن آخر نسخة محلياً حتى يفتح الموقع جاهزاً من أول لحظة، ونعيد الرسم فقط لو تغيّر شي فعلاً
+      let sig = '';
+      try{ sig = JSON.stringify(remote); }catch(e){}
+      if(sig !== window._lastSig){
+        window._lastSig = sig;
+        try{ localStorage.setItem('pf_data_v1', sig); }catch(e){}
+        renderAll();
+        countStats();
+      }
+    } else {
+       // السيرفر فاضي تماماً (أول مرة فعلياً) — ارفع البيانات الافتراضية الأولية فقط
+       window._setDoc(window._ref, data);
+    }
+    _markFirstDataReady();
+  }, err => {
+    console.info('Firebase not configured, running local mode.');
+    _markFirstDataReady(); // ما نعلّق شاشة التحميل إلى الأبد لو تعذّر الاتصال
+  });
+};
+
+async function pushToFirebase(){
+  if(!window._fbReady || !window._setDoc || !window._ref) return;
+  try{
+    await window._setDoc(window._ref, data);
+    showSaveStatus();
+  } catch(e){
+    console.warn('Firebase write failed:', e);
+    toast('❌ فشل الحفظ على السيرفر — تحقق من الاتصال بالإنترنت وحاول مرة أخرى');
+  }
+}
+
+function showSaveStatus(){
+  const el = document.getElementById('save-status');
+  if(el) { el.classList.add('show'); setTimeout(()=>el.classList.remove('show'), 2500); }
+}
+
+// ════════════════════════════════════
+// LANGUAGE
+// ════════════════════════════════════
+let lang = localStorage.getItem('pf_lang') || 'ar';
+function toggleLang(){ lang = lang==='ar'?'en':'ar'; localStorage.setItem('pf_lang',lang); applyLang(); renderAll(); }
+function applyLang(){
+  document.documentElement.lang = lang;
+  document.documentElement.dir  = lang==='ar'?'rtl':'ltr';
+  document.querySelectorAll('[data-ar][data-en]').forEach(el=>el.textContent=lang==='ar'?el.dataset.ar:el.dataset.en);
+}
+
+// ════════════════════════════════════
+// CURSOR
+// ════════════════════════════════════
+const C1 = document.getElementById('cur'), C2 = document.getElementById('cur2');
+let mx=0,my=0,rx=0,ry=0;
+document.addEventListener('mousemove', e=>{ 
+  mx=e.clientX; my=e.clientY; 
+  C1.style.left=mx+'px'; C1.style.top=my+'px'; 
+  
+  // تأثير Parallax (حركة النصوص عكس الماوس)
+  const x = (window.innerWidth / 2 - mx) / 45;
+  const y = (window.innerHeight / 2 - my) / 45;
+  const hn = document.querySelector('.hero-name');
+  const hd = document.querySelector('.hero-deg');
+  const hc = document.querySelector('.hero-chips');
+  if(hn) hn.style.transform = `translate(${x}px, ${y}px)`;
+  if(hd) hd.style.transform = `translate(${x * 1.5}px, ${y * 1.5}px)`;
+  if(hc) hc.style.transform = `translate(${x * -1}px, ${y * -1}px)`;
+});
+(function loop(){ rx+=(mx-rx)*.1; ry+=(my-ry)*.1; C2.style.left=rx+'px'; C2.style.top=ry+'px'; requestAnimationFrame(loop); })();
+document.addEventListener('mouseover',  e=>{ if(e.target.closest('a,button,[onclick],.folder-card,.proj-card,.cert-card,.fv-item,.skill-chip')) document.body.classList.add('hov'); });
+document.addEventListener('mouseout',   e=>{ if(e.target.closest('a,button,[onclick],.folder-card,.proj-card,.cert-card,.fv-item,.skill-chip')) document.body.classList.remove('hov'); });
+
+// ════════════════════════════════════
+// CANVAS BACKGROUND — Interactive Particles
+// ════════════════════════════════════
+(function CANVAS(){
+  const cv = document.getElementById('bg-canvas');
+  const ctx = cv.getContext('2d');
+  let W, H, particles=[], frameId;
+
+  function resize(){ W = cv.width = window.innerWidth; H = cv.height = window.innerHeight; }
+  resize(); window.addEventListener('resize', resize);
+
+  class Particle {
+    constructor(){this.reset();}
+    reset(){
+      this.x = Math.random()*W; this.y = Math.random()*H;
+      this.r = Math.random()*1.2+.3;
+      this.vx = (Math.random()-.5)*.3; this.vy = (Math.random()-.5)*.3;
+      this.life = Math.random(); this.red = Math.random()<.15; 
+    }
+    update(){
+      // تفاعل خرافي: الجزيئات تهرب من الماوس بلطافة
+      const dx = mx - this.x; const dy = my - this.y;
+      const dist = Math.sqrt(dx*dx + dy*dy);
+      if (dist < 130) {
+        this.x -= (dx/dist) * 1.5;
+        this.y -= (dy/dist) * 1.5;
+      }
+      this.x+=this.vx; this.y+=this.vy;
+      this.life+=.002;
+      if(this.x<0||this.x>W||this.y<0||this.y>H||this.life>1) this.reset();
+    }
+    draw(){
+      const a = Math.sin(this.life*Math.PI)*.55;
+      ctx.beginPath(); ctx.arc(this.x, this.y, this.r, 0, Math.PI*2);
+      ctx.fillStyle = this.red ? `rgba(192,57,43,${a})` : `rgba(232,220,200,${a*.4})`;
+      ctx.fill();
+    }
+  }
+
+  for(let i=0;i<120;i++) particles.push(new Particle());
+
+  function drawLines(){
+    for(let i=0;i<particles.length;i++){
+      // رسم خط طاقة بين الماوس والجزيئات القريبة
+      const mdx = mx - particles[i].x; const mdy = my - particles[i].y;
+      const md = Math.sqrt(mdx*mdx + mdy*mdy);
+      if(md < 160){
+        const ma = (1 - md/160) * 0.35;
+        ctx.beginPath(); ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(mx, my);
+        ctx.strokeStyle = particles[i].red ? `rgba(192,57,43,${ma})` : `rgba(232,220,200,${ma})`;
+        ctx.lineWidth = 0.8; ctx.stroke();
+      }
+
+      // خطوط بين الجزيئات نفسها
+      for(let j=i+1;j<particles.length;j++){
+        const dx=particles[i].x-particles[j].x; const dy=particles[i].y-particles[j].y;
+        const d=Math.sqrt(dx*dx+dy*dy);
+        if(d<110){
+          const a=(1-d/110)*.18; ctx.beginPath();
+          ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y);
+          const isRed = particles[i].red||particles[j].red;
+          ctx.strokeStyle = isRed ? `rgba(192,57,43,${a})` : `rgba(232,220,200,${a*.5})`;
+          ctx.lineWidth=.5; ctx.stroke();
+        }
+      }
+    }
+  }
+
+  function drawGrid(){
+    const size=80; ctx.strokeStyle='rgba(232,220,200,.025)'; ctx.lineWidth=.5;
+    for(let x=0;x<W;x+=size){ ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke(); }
+    for(let y=0;y<H;y+=size){ ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke(); }
+  }
+
+  const pulses=[];
+  setInterval(()=>{ if(pulses.length<5) pulses.push({ x:W*.5+(Math.random()-.5)*300, y:H*.4+(Math.random()-.5)*200, r:0, maxR:150+Math.random()*100 }); }, 3200);
+  
+  function drawPulses(){
+    for(let i=pulses.length-1;i>=0;i--){
+      const p=pulses[i]; p.r+=.6; const a=(1-p.r/p.maxR)*.2;
+      if(a<=0){pulses.splice(i,1);continue;}
+      ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2);
+      ctx.strokeStyle=`rgba(192,57,43,${a})`; ctx.lineWidth=1; ctx.stroke();
+    }
+  }
+
+  function frame(){
+    ctx.clearRect(0,0,W,H); drawGrid(); drawPulses();
+    particles.forEach(p=>{p.update();p.draw();}); drawLines();
+    frameId=requestAnimationFrame(frame);
+  }
+  frame();
+})();
+
+// ════════════════════════════════════
+// SCROLL PROGRESS BAR
+// ════════════════════════════════════
+(function(){
+  const bar = document.getElementById('scroll-bar-i');
+  const totop = document.getElementById('totop');
+  function onScroll(){
+    const h = document.documentElement;
+    const scrolled = h.scrollTop;
+    const max = h.scrollHeight - h.clientHeight;
+    const pct = max>0 ? (scrolled/max)*100 : 0;
+    if(bar) bar.style.width = pct + '%';
+    if(totop) totop.classList.toggle('show', scrolled > 500);
+  }
+  document.addEventListener('scroll', onScroll, { passive:true });
+  onScroll();
+})();
+
+// ════════════════════════════════════
+// MAGNETIC HOVER — buttons feel like they're pulled toward the cursor
+// ════════════════════════════════════
+(function(){
+  const SEL = '.hero-chip, .fsoc, .cfbtn, #adm-btn, #lang-btn, .skill-chip';
+  document.addEventListener('mousemove', e=>{
+    const el = e.target.closest ? e.target.closest(SEL) : null;
+    document.querySelectorAll(SEL).forEach(node=>{
+      if(node !== el) node.style.transform = '';
+    });
+    if(!el) return;
+    const r = el.getBoundingClientRect();
+    const mx = e.clientX - (r.left + r.width/2);
+    const my = e.clientY - (r.top + r.height/2);
+    el.style.transform = `translate(${mx*0.18}px, ${my*0.28}px)`;
+    el.style.transition = 'transform .15s ease-out';
+  });
+})();
+
+// ════════════════════════════════════
+// 3D TILT — folder / cert / exp cards react to cursor position
+// ════════════════════════════════════
+(function(){
+  const SEL = '.folder-card, .cert-card, .proj-card';
+  document.addEventListener('mousemove', e=>{
+    const el = e.target.closest ? e.target.closest(SEL) : null;
+    if(!el) return;
+    const r = el.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width;   // 0..1
+    const py = (e.clientY - r.top)  / r.height;  // 0..1
+    const ry = (px - .5) * 10;   // rotateY
+    const rx = (.5 - py) * 8;    // rotateX
+    el.style.setProperty('--rx', rx.toFixed(2)+'deg');
+    el.style.setProperty('--ry', ry.toFixed(2)+'deg');
+    el.style.setProperty('--mx', (px*100).toFixed(1)+'%');
+    el.style.setProperty('--my', (py*100).toFixed(1)+'%');
+  });
+  document.addEventListener('mouseout', e=>{
+    const el = e.target.closest ? e.target.closest(SEL) : null;
+    if(!el) return;
+    el.style.setProperty('--rx','0deg'); el.style.setProperty('--ry','0deg');
+  });
+})();
+
+// ════════════════════════════════════
+// IMAGE FADE-IN — images ease in once loaded instead of popping in
+// ════════════════════════════════════
+function fadeInImages(root){
+  (root||document).querySelectorAll('img:not(.imgfade)').forEach(img=>{
+    img.classList.add('imgfade');
+    img.loading = img.loading || 'lazy'; img.decoding = 'async';
+    const show = ()=>img.classList.add('loaded');
+    if(img.complete) show(); else img.addEventListener('load', show, { once:true });
+  });
+}
+const _renderAll_base = renderAll;
+function renderHisto(){
+  const el=document.getElementById('histo'); if(!el) return;
+  const ar=lang==='ar';
+  const fs=(data.folders||[]).map(f=>({id:f.id,n:(ar?f.ar:f.en)||f.ar||'',c:(f.images||[]).length}));
+  const total=fs.reduce((a,f)=>a+f.c,0);
+  if(!fs.length||!total){ el.innerHTML=''; return; }
+  const max=Math.max(...fs.map(f=>f.c)), top=fs.reduce((a,b)=>b.c>a.c?b:a);
+  el.innerHTML=`<div class="hs-top"><span>Histogram</span><span>${ar?'توزيع الصور على الألبومات':'Photos per album'}</span></div>
+  <div class="hs-scroll" style="--n:${fs.length}"><div class="hs-bars">${fs.map((f,i)=>`<div class="hs-col" onclick="openFolder(${f.id})" title="${esc(f.n)}"><em>${f.c}</em><i style="--h:${Math.max(5,f.c/max*100)}%;--d:${i*70}ms"></i></div>`).join('')}</div>
+  <div class="hs-lbls">${fs.map(f=>`<span>${esc(f.n)}</span>`).join('')}</div></div>
+  <div class="hs-foot"><b>${total}</b> ${ar?'صورة':'photos'} · <b>${fs.length}</b> ${ar?'ألبوم':'albums'} · ${ar?'الأكثر':'peak'}: <b>${esc(top.n)}</b></div>`;
+}
+function renderPTypes(){
+  const el=document.getElementById('ptypes'); if(!el) return;
+  const ar=lang==='ar', ps=data.projects||[];
+  if(!ps.length){ el.innerHTML=''; return; }
+  const m={}; ps.forEach(w=>{ const t=w.type||'Other'; m[t]=(m[t]||0)+1; });
+  const rows=Object.entries(m).sort((a,b)=>b[1]-a[1]);
+  const COL=['var(--red2)','var(--red)','var(--beige3)','var(--beige)','#8c4a3f','var(--muted)','#b9714f','#5a4e42'];
+  el.innerHTML=`<div class="hs-top"><span>Skill Mix</span><span>${ar?'توزيع المشاريع حسب النوع':'Projects by type'}</span></div>
+  <div class="pt-bar">${rows.map(([t,n],i)=>`<i style="flex:${n};--c:${COL[i%COL.length]};--d:${i*90}ms" title="${esc(t)}"></i>`).join('')}</div>
+  <div class="pt-list">${rows.map(([t,n],i)=>`<div class="pt-row"><span class="sw" style="--c:${COL[i%COL.length]}"></span>${ico(TI[t]||'box')}<span>${esc(t)}</span><b>${n} · ${Math.round(n/ps.length*100)}%</b></div>`).join('')}</div>`;
+}
+function renderMarq(){
+  const el=document.getElementById('mq-track'); if(!el) return;
+  const set=new Set(['PHOTOGRAPHY','DATA ANALYSIS','MIS']);
+  (data.projects||[]).forEach(w=>{ if(w.type) set.add(String(w.type).toUpperCase()); (w.tags||[]).forEach(t=>set.add(String(t).toUpperCase())); });
+  const words=[...set].slice(0,14);
+  const one=words.map(w=>'<span>'+esc(w)+'</span><i></i>').join('');
+  const html=one+one+one+one;
+  if(el.dataset.h!==html){ el.dataset.h=html; el.innerHTML=html; }
+}
+function staggerIdx(){
+  document.querySelectorAll('.folders-grid,.proj-list,.certs-grid,#certs-grid').forEach(g=>{
+    [...g.children].forEach((c,i)=>c.style.setProperty('--i',Math.min(i,8)));
+  });
+}
+renderAll = function(){ _renderAll_base(); fadeInImages(); renderHisto(); renderPTypes(); renderMarq(); staggerIdx(); if(window.updateDials) updateDials(); };
+const _openFolder_base = openFolder;
+openFolder = function(id){ _openFolder_base(id); fadeInImages(document.getElementById('fv-grid')); };
+
+// ════════════════════════════════════
+// LOADER
+// ════════════════════════════════════
+// شاشة التحميل تبقى ظاهرة لين توصل البيانات الحقيقية من Firestore فعلياً —
+// حتى لو أخذ وقت أطول (أول تحميل على الجوال ممكن يكون أبطأ بسبب تحميل مكتبة Firebase).
+// السقف الاحتياطي 20 ثانية هو فقط لحالات ندرة جداً (لا إنترنت إطلاقاً)، حتى ما تعلّق الشاشة للأبد.
+window.addEventListener('load',()=>{
+  const minDelay  = new Promise(res=>setTimeout(res, window._hadCache ? 250 : 700));   // وقت أدنى بسيط لحركة الشاشة
+  const dataReady = new Promise(res=>_onFirstDataReady(res)); // البيانات الحقيقية وصلت فعلاً
+  const maxWait   = new Promise(res=>setTimeout(res,6000));  // سقف أمان أخير بس
+  Promise.all([minDelay, Promise.race([dataReady, maxWait])]).then(()=>{
+    document.getElementById('loader').classList.add('out');
+    revealSetup(); countStats();
+    // ملاحظة: الاستماع الفعلي لبيانات Firebase يبدأ من السكربت الرئيسي (type="module") فوق
+  });
+});
+
+// ════════════════════════════════════
+// SCROLL REVEAL
+// ════════════════════════════════════
+function revealSetup(){
+  const io = new IntersectionObserver(entries=>{
+    entries.forEach((e,i)=>{ if(e.isIntersecting){ setTimeout(()=>{ e.target.classList.add('on','play'); setTimeout(()=>e.target.classList.remove('play'),2200); },i*80); io.unobserve(e.target); } });
+  },{threshold:.1});
+  document.querySelectorAll('.rv').forEach(el=>io.observe(el));
+}
+
+// ════════════════════════════════════
+// STATS COUNT-UP
+// ════════════════════════════════════
+function countStats(){
+  cnt('sph', data.folders.length);
+  cnt('spr', data.projects.length);
+  cnt('sct', data.certs.length);
+}
+function cnt(id, target){
+  const el=document.getElementById(id); let c=0,s=Math.max(1,Math.ceil(target/35));
+  const t=setInterval(()=>{ c=Math.min(c+s,target); el.textContent=c; if(c>=target)clearInterval(t); },45);
+}
+
+// ════════════════════════════════════
+// RENDER ALL
+// ════════════════════════════════════
+function renderAll(){ applyColors(); applyFonts(); renderProfile(); renderFolders(); renderProjects(); renderCerts(); renderExperience(); }
+
+
+function renderExperience(){
+  const el=document.getElementById('exp-timeline');if(!el)return;
+  const exps=(data.experience||[]).slice().sort((a,b)=>b.id-a.id);
+  if(!exps.length){el.innerHTML=`<p style="color:var(--muted);font-size:14px">${lang==='ar'?'لا توجد خبرات بعد':'No experience added yet'}</p>`;return;}
+  el.innerHTML=exps.map(x=>`
+    <div class="exp-item">
+      <div class="exp-card">
+        <div class="exp-duration">${esc(x.start)||''} — ${x.end?esc(x.end):(lang==='ar'?'حتى الآن':'Present')}</div>
+        <div class="exp-top">
+          <div class="exp-logo">${resolveImg(x.logo)?`<img src="${resolveImg(x.logo)}" alt="">`:esc((x.company||'').charAt(0))||ico('building')}</div>
+          <div class="exp-info">
+            <div class="exp-title">${esc(lang==='ar'?x.titleAr:x.titleEn)}</div>
+            <div class="exp-company">${esc(x.company)}</div>
+          </div>
+        </div>
+        ${x.location?`<div class="exp-location">${esc(x.location)}</div>`:''}
+        ${x.desc?`<div class="exp-desc">${esc(x.desc)}</div>`:''}
+      </div>
+    </div>`).join('');
+}
+
+function applyColors(){
+  const c=data.colors||{};const r=document.documentElement;
+  if(c.black)r.style.setProperty('--black',c.black);
+  if(c.black2)r.style.setProperty('--black2',c.black2);
+  if(c.black3)r.style.setProperty('--black3',c.black3);
+  if(c.red){r.style.setProperty('--red',c.red);r.style.setProperty('--bdr',hexAlpha(c.red,.22));}
+  if(c.red2)r.style.setProperty('--red2',c.red2);
+  if(c.beige)r.style.setProperty('--beige',c.beige);
+  if(c.beige2)r.style.setProperty('--beige2',c.beige2);
+  if(c.beige3)r.style.setProperty('--beige3',c.beige3);
+  if(c.muted)r.style.setProperty('--muted',c.muted);
+}
+function hexAlpha(hex,a){const r=parseInt(hex.slice(1,3),16),g=parseInt(hex.slice(3,5),16),b=parseInt(hex.slice(5,7),16);return `rgba(${r},${g},${b},${a})`;}
+
+function applyFonts(){
+  const f=data.fonts||{};const r=document.documentElement;
+  if(f.arabic)r.style.setProperty('--fa',`'${f.arabic}', sans-serif`);
+  if(f.english)r.style.setProperty('--fe',`'${f.english}', serif`);
+  if(f.bodySize)r.style.setProperty('--fs-body',f.bodySize);
+}
+
+function liveColor(varName,val){document.documentElement.style.setProperty(varName,val);const ct=document.getElementById('ct-'+varName.replace('--',''));if(ct)ct.value=val;if(!data.colors)data.colors={};data.colors[varName.replace('--','')]=val;}
+function applyColorText(varName,input){const val=input.value.trim();if(!/^#[0-9a-fA-F]{6}$/.test(val))return;document.documentElement.style.setProperty(varName,val);const cp=document.getElementById('cc-'+varName.replace('--',''));if(cp)cp.value=val;if(!data.colors)data.colors={};data.colors[varName.replace('--','')]=val;}
+function liveColorAlpha(){const red=(data.colors||{}).red||'#c0392b';document.documentElement.style.setProperty('--bdr',hexAlpha(red,.22));}
+function liveFontAr(val){document.documentElement.style.setProperty('--fa',`'${val}', sans-serif`);const fp=document.getElementById('fp-arabic');if(fp)fp.style.fontFamily=`'${val}', sans-serif`;if(!data.fonts)data.fonts={};data.fonts.arabic=val;}
+function liveFontEn(val){document.documentElement.style.setProperty('--fe',`'${val}', serif`);const fp=document.getElementById('fp-english');if(fp)fp.style.fontFamily=`'${val}', serif`;if(!data.fonts)data.fonts={};data.fonts.english=val;}
+function liveFontSize(varName,val){document.documentElement.style.setProperty(varName,val);if(!data.fonts)data.fonts={};data.fonts.bodySize=val;}
+function saveColors(){pushToFirebase();toast('✅ تم حفظ الألوان!');}
+function saveFonts(){pushToFirebase();toast('✅ تم حفظ الخطوط!');}
+function resetColors(){const def={black:'#0b0b0b',black2:'#141414',black3:'#1e1e1e',red:'#c0392b',red2:'#e74c3c',beige:'#e8dcc8',beige2:'#f4ede0',beige3:'#d4c4a8',muted:'#7a6e60'};data.colors=def;applyColors();fillColorInputs();pushToFirebase();toast('↩ تم إعادة الألوان الافتراضية');}
+function fillColorInputs(){const c=data.colors||{};const def={black:'#0b0b0b',black2:'#141414',red:'#c0392b',red2:'#e74c3c',beige:'#e8dcc8',beige2:'#f4ede0',muted:'#7a6e60'};Object.entries(def).forEach(([k,dv])=>{const v=c[k]||dv;const cp=document.getElementById('cc-'+k);if(cp)cp.value=v;const ct=document.getElementById('ct-'+k);if(ct)ct.value=v;});}
+function fillFontInputs(){const f=data.fonts||{};const ffa=document.getElementById('ff-arabic');if(ffa&&f.arabic)ffa.value=f.arabic;const ffe=document.getElementById('ff-english');if(ffe&&f.english)ffe.value=f.english;const fbr=document.getElementById('fs-body-r');if(fbr&&f.bodySize){fbr.value=parseInt(f.bodySize);const sv=document.getElementById('fs-body-val');if(sv)sv.textContent=parseInt(f.bodySize);}}
+
+function addExp(){
+  if(!isAuth())return;
+  const ar=gv('ax-title-ar');if(!ar)return alert('ضع المسمى الوظيفي');
+  data.experience=data.experience||[];
+  const fields={titleAr:ar,titleEn:gv('ax-title-en')||ar,company:gv('ax-company'),location:gv('ax-location'),start:gv('ax-start'),end:gv('ax-end'),desc:gv('ax-desc'),logo:gv('ax-logo')};
+  const eid=_editing.exp;
+  if(eid){
+    const x=data.experience.find(e=>e.id===eid);
+    if(x){ if(x.logo && x.logo!==fields.logo) cleanupImgRef(x.logo); Object.assign(x,fields); }
+  } else {
+    data.experience.push({id:Date.now(),...fields});
+  }
+  cancelEdit('exp');
+  renderExperience();renderAdminLists();pushToFirebase();toast(eid?'✅ تم تعديل الخبرة!':'✅ تم إضافة الخبرة!');
+}
+function delExp(id){
+  if(!isAuth())return;if(!confirm('حذف الخبرة؟'))return;
+  const x=(data.experience||[]).find(e=>e.id===id);
+  if(x) cleanupImgRef(x.logo);
+  if(_editing.exp===id) cancelEdit('exp');
+  data.experience=(data.experience||[]).filter(x=>x.id!==id);
+  renderExperience();renderAdminLists();pushToFirebase();toast('🗑 تم الحذف');
+}
+
+function renderProfile(){
+  const p = data.profile;
+  // Hero
+  setRoles(p.htag || 'مصور · خريج نظم معلومات إدارية');
+  setHeroName('hero-n1', p.hn1 || 'Visual');
+  setHeroName('hero-n2', p.hn2 || 'Portfolio');
+  setHeroDeg(lang==='ar'
+    ? `بكالوريس نظم معلومات إدارية · ${p.uni} · ${p.year}`
+    : `BSc Management Information Systems · ${p.uni} · ${p.year}`);
+  // Nav/footer name
+  const nm = p.name||'Portfolio';
+  const nameParts = nm.split(' ');
+  const formattedName = nameParts.length > 1 
+    ? `${esc(nameParts[0])} <em>${esc(nameParts.slice(1).join(' '))}</em>`
+    : esc(nm);
+
+  ['nav-name','ft-logo'].forEach(id=>{
+    const el=document.getElementById(id);
+    if(el) el.innerHTML = formattedName;
+  });
+  document.getElementById('ft-cr').textContent=`© ${new Date().getFullYear()} ${nm}. All rights reserved.`;
+  // Grad card
+  document.getElementById('gc-name').textContent  = p.name;
+  document.getElementById('gc-title').textContent = p.titleEn;
+  document.getElementById('gc-rows').innerHTML=`
+    <div class="g-row"><span class="g-ico">${ico('grad')}</span><div class="g-info"><strong>${lang==='ar'?'التخصص':'Major'}</strong>${lang==='ar'?'نظم المعلومات الإدارية':'Management Information Systems'}</div></div>
+    <div class="g-row"><span class="g-ico">${ico('landmark')}</span><div class="g-info"><strong>${lang==='ar'?'الجامعة':'University'}</strong>${esc(p.uni)}</div></div>
+    <div class="g-row"><span class="g-ico">${ico('calendar')}</span><div class="g-info"><strong>${lang==='ar'?'سنة التخرج':'Graduated'}</strong>${esc(p.year)}</div></div>
+    <div class="g-row"><span class="g-ico">${ico('pin')}</span><div class="g-info"><strong>${lang==='ar'?'الموقع':'Location'}</strong>${esc(p.loc)}</div></div>
+  `;
+  document.getElementById('g-av-wrap').innerHTML = resolveImg(p.photo)
+    ? `<img class="g-av" src="${resolveImg(p.photo)}" alt="">`
+    : `<div class="g-av-ph">🎓</div>`;
+  // About
+  document.getElementById('about-name-el').textContent = p.name;
+  document.getElementById('about-bio-el').textContent  = p.bio;
+  document.getElementById('skills-wrap').innerHTML     = (p.skills||[]).map(s=>`<span class="skill-chip">${esc(s)}</span>`).join('');
+  const ap = document.getElementById('about-ph-el');
+  if(ap){
+    const photoSrc = resolveImg(p.photo);
+    if(photoSrc){ const img=document.createElement('img'); img.id='about-ph-el'; img.className='about-photo'; img.src=photoSrc; ap.replaceWith(img); }
+  }
+  // Socials
+  document.getElementById('fs-ig').href = p.ig||'#';
+  document.getElementById('fs-tw').href = p.tw||'#';
+  document.getElementById('fs-li').href = p.li||'#';
+}
+
+function renderFolders(){
+  document.getElementById('folders-grid').innerHTML=data.folders.map(f=>`
+    <div class="folder-card" onclick="openFolder(${f.id})">
+      <div class="f-thumb">
+        ${resolveImg(f.cover)?`<img src="${resolveImg(f.cover)}" alt="">`:`<div class="f-ph">${ico('camera')}</div>`}
+        <div class="f-overlay"><span class="f-open">${lang==='ar'?'فتح الألبوم ←':'Open Album →'}</span></div>
+      </div>
+      <div class="f-meta">
+        <div><div class="f-name">${esc(lang==='ar'?f.ar:f.en)}</div><div class="f-count">${f.images.length} ${lang==='ar'?'صورة':'photos'}</div></div>
+        <span style="font-size:18px">${ico('camera')}</span>
+      </div>
+    </div>`).join('');
+}
+
+const IC={
+  globe:'<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18"/>',
+  table:'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 10h18M3 15h18M9 4v16"/>',
+  layers:'<path d="M12 3l9 5-9 5-9-5 9-5z"/><path d="M3 13l9 5 9-5"/>',
+  database:'<ellipse cx="12" cy="6" rx="8" ry="3"/><path d="M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3"/>',
+  present:'<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4M8 20h8"/>',
+  report:'<path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5M9 13h6M9 17h6"/>',
+  pen:'<path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/>',
+  box:'<path d="M21 8l-9-5-9 5v8l9 5 9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/>',
+  grad:'<path d="M22 9L12 4 2 9l10 5z"/><path d="M6 11v5c0 1.5 2.7 3 6 3s6-1.5 6-3v-5"/>',
+  landmark:'<path d="M3 21h18M5 21V10M9 21V10M15 21V10M19 21V10M2 10l10-6 10 6z"/>',
+  calendar:'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/>',
+  pin:'<path d="M12 21s7-6.2 7-11a7 7 0 0 0-14 0c0 4.8 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/>',
+  building:'<rect x="5" y="3" width="14" height="18" rx="1"/><path d="M9 7h2M13 7h2M9 11h2M13 11h2M9 15h2M13 15h2"/>',
+  camera:'<path d="M4 8h3l2-3h6l2 3h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.8"/>',
+  award:'<circle cx="12" cy="9" r="6"/><path d="M8.5 14.5L7 22l5-3 5 3-1.5-7.5"/>'
+};
+function ico(n){ return '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">'+(IC[n]||IC.box)+'</svg>'; }
+const TI={Website:'globe',Excel:'table',PowerPoint:'present',Database:'database',Report:'report',Design:'pen',App:'layers',Other:'box'};
+const TE=new Proxy({},{get:(_,k)=>ico(TI[k]||'box')});
+function safeUrl(u){
+  u=(u||'').trim(); if(!u) return '';
+  if(!/^https?:\/\//i.test(u)) u='https://'+u;
+  try{ const x=new URL(u); return (x.protocol==='http:'||x.protocol==='https:')?x.href:''; }catch(e){ return ''; }
+}
+function renderProjects(){
+  document.getElementById('proj-list').innerHTML=data.projects.map(w=>`
+    <div class="proj-card">
+      <div class="proj-top">
+        <div class="proj-name">${esc(lang==='ar'?w.ar:w.en)}</div>
+        <div class="proj-badge">${TE[w.type]||'💼'} ${esc(w.type)}</div>
+      </div>
+      <div class="proj-desc">${esc(w.desc)}</div>
+      <div class="proj-tags">${(w.tags||[]).map(t=>`<span class="proj-tag">${esc(t)}</span>`).join('')}</div>
+      ${safeUrl(w.url)?`<a class="proj-link" href="${esc(safeUrl(w.url))}" target="_blank" rel="noopener noreferrer" onclick="event.stopPropagation()"><span>${lang==='ar'?'جرّب المشروع':'Try it live'}</span><span class="arr">↗</span></a>`:''}
+      ${w.images&&w.images.length?`<div class="proj-imgs">${w.images.map(resolveImg).filter(Boolean).slice(0,4).map(src=>`<img class="proj-img" src="${src}" onclick="openLB('${src}');event.stopPropagation();">`).join('')}</div>`:''}
+    </div>`).join('');
+}
+
+let certCat='all';
+function filterCerts(cat,btn){ certCat=cat; document.querySelectorAll('.cfbtn').forEach(b=>b.classList.remove('on')); btn.classList.add('on'); renderCertsGrid(); }
+function renderCerts(){
+  const cats=[...new Set(data.certs.map(c=>c.cat).filter(Boolean))];
+  document.getElementById('cert-filter').innerHTML=
+    `<button class="cfbtn ${certCat==='all'?'on':''}" onclick="filterCerts('all',this)">${lang==='ar'?'الكل':'All'}</button>`
+    +cats.map(c=>`<button class="cfbtn ${certCat===c?'on':''}" onclick="filterCerts('${escJsAttr(c)}',this)">${esc(c)}</button>`).join('');
+  renderCertsGrid();
+}
+function renderCertsGrid(){
+  const list=certCat==='all'?data.certs:data.certs.filter(c=>c.cat===certCat);
+  document.getElementById('certs-grid').innerHTML=list.map(c=>{
+    const src = resolveImg(c.img);
+    return `
+    <div class="cert-card">
+      <div class="cert-gl"></div>
+      ${c.cat?`<div class="cert-cat-tag">${esc(c.cat)}</div>`:''}
+      <span class="cert-emoji">${ico('award')}</span>
+      <div class="cert-name">${esc(lang==='ar'?c.ar:c.en)}</div>
+      <div class="cert-issuer">${esc(c.issuer)}</div>
+      <div class="cert-date">${esc(c.date)}</div>
+      ${src?`<img class="cert-img" src="${src}" onclick="openLB('${src}')">`:''}
+    </div>`;
+  }).join('');
+}
+
+// ════════════════════════════════════
+// FOLDER VIEWER & LIGHTBOX
+// ════════════════════════════════════
+function openFolder(id){
+  const f=data.folders.find(x=>x.id===id); if(!f)return;
+  document.getElementById('fv-title').innerHTML=`${esc(lang==='ar'?f.ar:f.en)}`;
+  const imgs = (f.images||[]).map(resolveImg).filter(Boolean);
+  _lbList = imgs.slice();
+  document.getElementById('fv-grid').innerHTML=imgs.length
+    ?imgs.map(src=>`<div class="fv-item" onclick="openLB('${src}')"><img src="${src}" alt=""></div>`).join('')
+    :`<div class="fv-empty">${lang==='ar'?'لا توجد صور بعد 📷':'No photos yet 📷'}</div>`;
+  document.getElementById('fv').classList.add('open'); document.body.style.overflow='hidden';
+}
+function closeFV(){ document.getElementById('fv').classList.remove('open'); document.body.style.overflow=''; }
+let _lbList=[], _lbIdx=0;
+function openLB(src){
+  const i=_lbList.indexOf(src);
+  if(i<0) _lbList=[src];            // صورة منفردة (شهادة/مشروع)
+  _lbIdx=Math.max(0,_lbList.indexOf(src));
+  lbShow(true);
+  document.getElementById('lb').classList.add('open');
+}
+function lbShow(first){
+  const im=document.getElementById('lb-img'), lb=document.getElementById('lb');
+  lb.classList.toggle('single',_lbList.length<2);
+  const set=()=>{ im.src=_lbList[_lbIdx]; im.classList.remove('sw'); };
+  if(first) set(); else { im.classList.add('sw'); setTimeout(set,150); }
+  document.getElementById('lb-cnt').textContent=(_lbIdx+1)+' / '+_lbList.length;
+  [1,-1].forEach(d=>{ const n=_lbList[(_lbIdx+d+_lbList.length)%_lbList.length]; if(n){ const x=new Image(); x.src=n; } });
+}
+function lbStep(d){
+  if(_lbList.length<2) return;
+  _lbIdx=(_lbIdx+d+_lbList.length)%_lbList.length; lbShow(false);
+}
+document.addEventListener('keydown',e=>{
+  if(!document.getElementById('lb').classList.contains('open')) return;
+  const rtl=document.documentElement.dir==='rtl';
+  if(e.key==='Escape') closeLB();
+  else if(e.key==='ArrowRight') lbStep(rtl?-1:1);
+  else if(e.key==='ArrowLeft')  lbStep(rtl?1:-1);
+});
+(function(){
+  let x0=null;
+  const lb=document.getElementById('lb');
+  lb.addEventListener('touchstart',e=>{ x0=e.touches[0].clientX; },{passive:true});
+  lb.addEventListener('touchend',e=>{
+    if(x0===null) return; const dx=e.changedTouches[0].clientX-x0; x0=null;
+    if(Math.abs(dx)<50) return;
+    const rtl=document.documentElement.dir==='rtl';
+    lbStep((dx>0)===rtl?1:-1);
+  },{passive:true});
+})();
+function closeLB(){ document.getElementById('lb').classList.remove('open'); }
+
+// ════════════════════════════════════
+// LOGIN / ADMIN
+// ════════════════════════════════════
+function openLogin(){ document.getElementById('lm').classList.add('open'); setTimeout(()=>document.getElementById('lemail').focus(),80); }
+function closeLM(){ document.getElementById('lm').classList.remove('open'); document.getElementById('lpass').value=''; document.getElementById('lemail').value=''; document.getElementById('lerr').style.display='none'; }
+async function doLogin(){
+  const email = document.getElementById('lemail').value.trim();
+  const raw = document.getElementById('lpass').value;
+  document.getElementById('lpass').value=''; // clear immediately
+  const btn = document.getElementById('lbtn');
+  btn.disabled = true; btn.textContent = '...جاري الدخول';
+  const ok = await tryLogin(email, raw);
+  btn.disabled = false; btn.textContent = 'دخول / Enter';
+  if(ok){ closeLM(); openAdmin(); }
+}
+function openAdmin(){ if(!isAuth())return; fillAdmin(); document.getElementById('ap').classList.add('open'); document.body.style.overflow='hidden'; }
+function closeAdmin(){ document.getElementById('ap').classList.remove('open'); document.body.style.overflow=''; }
+
+function fillAdmin(){
+  const p=data.profile;
+  const flds={
+    'ap-name':p.name,'ap-title':p.titleEn,'ap-uni':p.uni,'ap-year':p.year,
+    'ap-loc':p.loc,'ap-bio':p.bio,'ap-photo':p.photo,
+    'ap-ig':p.ig,'ap-tw':p.tw,'ap-li':p.li,
+    'ap-skills':(p.skills||[]).join(', '),'ap-htag':p.htag,
+    'ap-hn1':p.hn1||'Visual','ap-hn2':p.hn2||'Portfolio',
+  };
+  Object.entries(flds).forEach(([id,val])=>{ const el=document.getElementById(id); if(el)el.value=val||''; });
+  renderAdminLists();
+  fillColorInputs();
+  fillFontInputs();
+}
+
+function saveAll(){
+  if(!isAuth()){ closeAdmin(); return; }
+  if(isUploadPending()){ toast('⏳ فيه صور لسه يتم رفعها، انتظر لين تخلص'); return; }
+  const p=data.profile;
+  const flds=['ap-name','ap-title','ap-uni','ap-year','ap-loc','ap-bio','ap-photo','ap-ig','ap-tw','ap-li','ap-htag','ap-hn1','ap-hn2'];
+  const keys=['name','titleEn','uni','year','loc','bio','photo','ig','tw','li','htag','hn1','hn2'];
+  flds.forEach((id,i)=>{ p[keys[i]]=(document.getElementById(id)||{}).value||''; });
+  p.ig=p.ig||'#'; p.tw=p.tw||'#'; p.li=p.li||'#';
+  p.skills=(document.getElementById('ap-skills').value||'').split(',').map(s=>s.trim()).filter(Boolean);
+  renderAll(); countStats();
+  pushToFirebase();
+  toast('✅ تم الحفظ وسيظهر للكل فوراً!');
+}
+
+function renderAdminLists(){
+  document.getElementById('al-folders').innerHTML=data.folders.map(f=>`
+    <div class="aitem"><div class="aitem-n">${esc(f.ar)} / ${esc(f.en)} <span style="color:var(--muted);font-size:10px">(${(f.images||[]).length} صورة)</span></div>
+    <button class="abtn" style="margin-inline-end:6px" onclick="editFolder(${f.id})">✏️ تعديل</button>
+    <button class="adel" onclick="delFolder(${f.id})">حذف</button></div>`).join('');
+  document.getElementById('al-projects').innerHTML=data.projects.map(w=>`
+    <div class="aitem"><div class="aitem-n">${esc(w.ar)} <span style="color:var(--red);font-size:9px">${esc(w.type)}</span>${w.url?' <span style="color:var(--muted);font-size:10px">🔗</span>':''}</div>
+    <button class="abtn" style="margin-inline-end:6px" onclick="editItem('projects',${w.id})">✏️ تعديل</button>
+    <button class="adel" onclick="delProject(${w.id})">حذف</button></div>`).join('');
+  document.getElementById('al-certs').innerHTML=data.certs.map(c=>`
+    <div class="aitem"><div class="aitem-n">${esc(c.emoji)} ${esc(c.ar)}</div>
+    <button class="abtn" style="margin-inline-end:6px" onclick="editItem('certs',${c.id})">✏️ تعديل</button>
+    <button class="adel" onclick="delCert(${c.id})">حذف</button></div>`).join('');
+  const alExp=document.getElementById('al-exp');
+  if(alExp) alExp.innerHTML=(data.experience||[]).slice().sort((a,b)=>b.id-a.id).map(x=>`
+    <div class="aitem"><div class="aitem-n">${esc(x.titleAr)} <span style="color:var(--muted);font-size:10px">— ${esc(x.company)}</span></div>
+    <button class="abtn" style="margin-inline-end:6px" onclick="editItem('exp',${x.id})">✏️ تعديل</button>
+    <button class="adel" onclick="delExp(${x.id})">حذف</button></div>`).join('');
+  
+  const selHtml = data.folders.map(f=>`<option value="${f.id}">${esc(f.ar)}</option>`).join('');
+  document.getElementById('af-sel').innerHTML = selHtml;
+  
+  // تحديث قائمة التعديل الجديدة
+  const editSel = document.getElementById('af-edit-sel');
+  if(editSel) {
+    const keepSel = editSel.value;
+    editSel.innerHTML = selHtml;
+    if(keepSel && data.folders.some(f=>String(f.id)===keepSel)) editSel.value = keepSel;
+    renderFolderEditor();
+  }
+}
+// CRUD Folders
+function addFolder(){
+  if(!isAuth())return;
+  const ar=gv('af-ar'); if(!ar)return alert('ضع اسم المجلد');
+  data.folders.push({id:Date.now(),ar,en:gv('af-en')||ar,emoji:gv('af-emoji')||'📁',cover:gv('af-cover'),images:[]});
+  ['af-ar','af-en','af-cover'].forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  renderFolders(); renderAdminLists(); pushToFirebase(); toast('✅ تم إضافة المجلد!');
+}
+// يحذف مستند الصورة الفعلي من Firestore لو كانت مخزّنة بنظام المعرّفات (لتفادي تراكم صور يتيمة)
+function cleanupImgRef(v){
+  if(isImgRef(v) && window._deleteImgDoc){ window._deleteImgDoc(v); delete imgCache[v]; }
+}
+function delFolder(id){
+  if(!isAuth())return; if(!confirm('حذف المجلد؟'))return;
+  const f=data.folders.find(x=>x.id===id);
+  if(f){ cleanupImgRef(f.cover); (f.images||[]).forEach(cleanupImgRef); }
+  data.folders=data.folders.filter(f=>f.id!==id);
+  renderFolders(); renderAdminLists(); pushToFirebase(); toast('🗑 تم الحذف');
+}
+function addFolderImgs(){
+  if(!isAuth())return;
+  const fid=parseInt(document.getElementById('af-sel').value);
+  const f=data.folders.find(x=>x.id===fid); if(!f)return;
+  const imgs=gv('af-imgs').split('|').map(s=>s.trim()).filter(Boolean);
+  f.images=[...(f.images||[]),...imgs];
+  document.getElementById('af-imgs').value='';
+  renderFolders(); renderAdminLists(); countStats(); pushToFirebase(); toast(`✅ أُضيفت ${imgs.length} صورة!`);
+}
+
+// ══════ إدارة وتعديل المجلدات ══════
+function renderFolderEditor(){
+  const el = document.getElementById('af-edit-sel');
+  if(!el || !el.value) return;
+  const fid = parseInt(el.value);
+  const f = data.folders.find(x => x.id === fid);
+  if(!f) return;
+  
+  // عرض الأسماء الحالية
+  document.getElementById('af-edit-ar').value = f.ar || '';
+  document.getElementById('af-edit-en').value = f.en || '';
+  // عرض الغلاف والإيموجي الحالي
+  document.getElementById('af-edit-cover').value = f.cover || '';
+  document.getElementById('af-edit-emoji').value = f.emoji || '';
+
+  // عرض صور الألبوم مع زر الحذف
+  const imgsBox = document.getElementById('af-edit-imgs');
+  if(!f.images || !f.images.length) {
+    imgsBox.innerHTML = '<span style="color:var(--muted);font-size:10px">لا توجد صور في هذا الألبوم</span>';
+    return;
+  }
+  imgsBox.innerHTML = f.images.map((img, idx) => `
+    <div style="position:relative;width:60px;height:60px;border:1px solid var(--border);border-radius:4px;overflow:hidden">
+      <img src="${resolveImg(img)}" style="width:100%;height:100%;object-fit:cover">
+      <button onclick="delImgFromFolder(${fid}, ${idx})" style="position:absolute;top:2px;right:2px;background:var(--red2);color:white;border:none;border-radius:50%;width:16px;height:16px;font-size:8px;cursor:none;display:flex;align-items:center;justify-content:center" title="حذف">✕</button>
+    </div>
+  `).join('');
+}
+
+function updateFolderMeta(){
+  if(!isAuth()) return;
+  const fid = parseInt(document.getElementById('af-edit-sel').value);
+  const f = data.folders.find(x => x.id === fid);
+  if(!f) return;
+  
+  // حفظ الأسماء الجديدة
+  f.ar = document.getElementById('af-edit-ar').value.trim();
+  f.en = document.getElementById('af-edit-en').value.trim();
+  // حفظ الغلاف والإيموجي
+  f.cover = document.getElementById('af-edit-cover').value.trim();
+  f.emoji = document.getElementById('af-edit-emoji').value.trim() || '📁';
+  
+  renderFolders(); renderAdminLists(); pushToFirebase(); toast('✅ تم تحديث الألبوم بنجاح!');
+}
+
+function delImgFromFolder(fid, imgIdx){
+  if(!isAuth()) return;
+  if(!confirm('هل أنت متأكد من حذف هذه الصورة؟ (لا يمكن التراجع)')) return;
+  
+  const f = data.folders.find(x => x.id === fid);
+  if(!f) return;
+  
+  cleanupImgRef(f.images[imgIdx]);
+  f.images.splice(imgIdx, 1); // حذف الصورة من المصفوفة
+  
+  renderFolderEditor(); // تحديث مصغرات الصور
+  renderFolders(); renderAdminLists(); countStats(); pushToFirebase(); 
+  toast('🗑 تم حذف الصورة بنجاح!');
+}
+
+// ════════ وضع التعديل (مشاريع / شهادات / خبرات) ════════
+const _editing = {projects:null, certs:null, exp:null};
+const _EDIT_CFG = {
+  projects:{list:()=>data.projects, btn:'btn-aw', cancel:'cancel-aw', addLabel:'+ إضافة مشروع', first:'aw-ar',
+    clear:['aw-ar','aw-en','aw-desc','aw-tags','aw-imgs','aw-url'],
+    fill:w=>({'aw-ar':w.ar,'aw-en':w.en,'aw-desc':w.desc,'aw-tags':(w.tags||[]).join(', '),'aw-imgs':(w.images||[]).join('|'),'aw-url':w.url||''}),
+    after:w=>{ const t=document.getElementById('aw-type'); if(t) t.value=w.type||'Other'; }},
+  certs:{list:()=>data.certs, btn:'btn-ac', cancel:'cancel-ac', addLabel:'+ إضافة شهادة', first:'ac-ar',
+    clear:['ac-ar','ac-en','ac-issuer','ac-date','ac-cat','ac-emoji','ac-img'],
+    fill:c=>({'ac-ar':c.ar,'ac-en':c.en,'ac-issuer':c.issuer,'ac-date':c.date,'ac-cat':c.cat,'ac-emoji':c.emoji,'ac-img':c.img})},
+  exp:{list:()=>data.experience||[], btn:'btn-ax', cancel:'cancel-ax', addLabel:'+ إضافة خبرة', first:'ax-title-ar',
+    clear:['ax-title-ar','ax-title-en','ax-company','ax-location','ax-start','ax-end','ax-desc','ax-logo'],
+    fill:x=>({'ax-title-ar':x.titleAr,'ax-title-en':x.titleEn,'ax-company':x.company,'ax-location':x.location,'ax-start':x.start,'ax-end':x.end,'ax-desc':x.desc,'ax-logo':x.logo})}
+};
+function editItem(kind,id){
+  if(!isAuth())return;
+  const cfg=_EDIT_CFG[kind]; const item=cfg.list().find(x=>x.id===id); if(!item)return;
+  _editing[kind]=id;
+  Object.entries(cfg.fill(item)).forEach(([k,v])=>{ const el=document.getElementById(k); if(el) el.value=v||''; });
+  if(cfg.after) cfg.after(item);
+  document.getElementById(cfg.btn).textContent='💾 حفظ التعديل';
+  document.getElementById(cfg.cancel).style.display='';
+  const f=document.getElementById(cfg.first); if(f){ f.scrollIntoView({behavior:'smooth',block:'center'}); f.focus(); }
+  toast('✏️ وضع التعديل — عدّل ثم اضغط حفظ التعديل');
+}
+function cancelEdit(kind){
+  const cfg=_EDIT_CFG[kind]; _editing[kind]=null;
+  cfg.clear.forEach(i=>{const el=document.getElementById(i);if(el)el.value='';});
+  document.getElementById(cfg.btn).textContent=cfg.addLabel;
+  document.getElementById(cfg.cancel).style.display='none';
+}
+async function syncImages(){
+  if(!isAuth()) return;
+  const refs=new Set(), add=v=>{ if(isImgRef(v)) refs.add(v); };
+  (data.folders||[]).forEach(f=>{ add(f.cover); (f.images||[]).forEach(add); });
+  (data.projects||[]).forEach(w=>(w.images||[]).forEach(add));
+  (data.certs||[]).forEach(c=>add(c.img));
+  (data.experience||[]).forEach(x=>add(x.logo));
+  add((data.profile||{}).photo);
+  const have=[...refs].filter(r=>imgCache[r]), missing=refs.size-have.length;
+  toast('⏳ جاري مزامنة '+have.length+' صورة...');
+  let ok=0, bad=0;
+  await Promise.all(have.map(r=>window._setImgDoc(r,imgCache[r]).then(()=>ok++).catch(()=>bad++)));
+  toast('✅ تمت مزامنة '+ok+' صورة'+(bad?' — فشل '+bad:'')+(missing?' — '+missing+' صورة مفقودة من هذا الجهاز (أعد رفعها)':''));
+}
+function editFolder(id){
+  if(!isAuth())return;
+  goSub(2);
+  const sel=document.getElementById('af-edit-sel'); if(sel){ sel.value=String(id); renderFolderEditor(); }
+  const el=document.getElementById('af-edit-ar'); if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.focus(); }
+}
+
+// CRUD Projects
+function addProject(){
+  if(!isAuth())return;
+  const ar=gv('aw-ar'); if(!ar)return alert('ضع اسم المشروع');
+  const imgs=gv('aw-imgs').split('|').map(s=>s.trim()).filter(Boolean);
+  const tags=gv('aw-tags').split(',').map(s=>s.trim()).filter(Boolean);
+  const rawUrl=gv('aw-url'), url=safeUrl(rawUrl);
+  if(rawUrl && !url) return alert('رابط المشروع غير صحيح');
+  const fields={ar,en:gv('aw-en')||ar,desc:gv('aw-desc'),type:document.getElementById('aw-type').value,tags,images:imgs,url};
+  const eid=_editing.projects;
+  if(eid){
+    const w=data.projects.find(x=>x.id===eid);
+    if(w){ (w.images||[]).filter(o=>!imgs.includes(o)).forEach(cleanupImgRef); Object.assign(w,fields); }
+  } else {
+    data.projects.push({id:Date.now(),...fields});
+  }
+  cancelEdit('projects');
+  renderProjects(); renderAdminLists(); countStats(); pushToFirebase(); toast(eid?'✅ تم تعديل المشروع!':'✅ تم إضافة المشروع!');
+}
+function delProject(id){
+  if(!isAuth())return; if(!confirm('حذف؟'))return;
+  const w=data.projects.find(x=>x.id===id);
+  if(w) (w.images||[]).forEach(cleanupImgRef);
+  if(_editing.projects===id) cancelEdit('projects');
+  data.projects=data.projects.filter(w=>w.id!==id);
+  renderProjects(); renderAdminLists(); countStats(); pushToFirebase(); toast('🗑 تم الحذف');
+}
+
+// CRUD Certs
+function addCert(){
+  if(!isAuth())return;
+  const ar=gv('ac-ar'); if(!ar)return alert('ضع اسم الشهادة');
+  const fields={ar,en:gv('ac-en')||ar,issuer:gv('ac-issuer'),date:gv('ac-date'),cat:gv('ac-cat'),emoji:gv('ac-emoji')||'🎓',img:gv('ac-img')};
+  const eid=_editing.certs;
+  if(eid){
+    const c=data.certs.find(x=>x.id===eid);
+    if(c){ if(c.img && c.img!==fields.img) cleanupImgRef(c.img); Object.assign(c,fields); }
+  } else {
+    data.certs.push({id:Date.now(),...fields});
+  }
+  cancelEdit('certs');
+  renderCerts(); renderAdminLists(); countStats(); pushToFirebase(); toast(eid?'✅ تم تعديل الشهادة!':'✅ تم إضافة الشهادة!');
+}
+function delCert(id){
+  if(!isAuth())return; if(!confirm('حذف؟'))return;
+  const c=data.certs.find(x=>x.id===id);
+  if(c) cleanupImgRef(c.img);
+  if(_editing.certs===id) cancelEdit('certs');
+  data.certs=data.certs.filter(c=>c.id!==id);
+  renderCerts(); renderAdminLists(); countStats(); pushToFirebase(); toast('🗑 تم الحذف');
+}
+
+// Change Password
+async function changePass(){
+  if(!isAuth())return;
+  const cur=document.getElementById('cp-cur').value;
+  const nw =document.getElementById('cp-new').value;
+  const con=document.getElementById('cp-con').value;
+  const msg=document.getElementById('cp-msg');
+  if(!cur){msg.style.color='var(--red2)';msg.textContent='❌ أدخل كلمة السر الحالية';return;}
+  if(nw.length<6){msg.style.color='var(--red2)';msg.textContent='❌ كلمة السر الجديدة قصيرة جداً (6+ أحرف)';return;}
+  if(nw!==con){msg.style.color='var(--red2)';msg.textContent='❌ كلمتا السر لا تتطابقان';return;}
+  msg.style.color='var(--muted)'; msg.textContent='⏳ جاري التحديث...';
+  try{
+    await window._changePassword(cur, nw);
+    ['cp-cur','cp-new','cp-con'].forEach(i=>document.getElementById(i).value='');
+    msg.style.color='#27ae60'; msg.textContent='✅ تم تغيير كلمة السر بنجاح!';
+  }catch(e){
+    const map={'auth/wrong-password':'كلمة السر الحالية غلط','auth/invalid-credential':'كلمة السر الحالية غلط','auth/weak-password':'كلمة السر الجديدة ضعيفة جداً','auth/requires-recent-login':'رجاءً سجّل خروج وادخل من جديد ثم حاول'};
+    msg.style.color='var(--red2)'; msg.textContent='❌ '+(map[e.code]||'فشل تغيير كلمة السر');
+  }
+  setTimeout(()=>msg.textContent='',4000);
+}
+
+// ════════════════════════════════════
+// MOBILE NAV
+// ════════════════════════════════════
+function toggleMobNav(){
+  const mn=document.getElementById('mob-nav'), hb=document.getElementById('nav-hbg');
+  mn.classList.toggle('open'); hb.classList.toggle('x');
+  document.body.style.overflow=mn.classList.contains('open')?'hidden':'';
+}
+function closeMobNav(){ document.getElementById('mob-nav').classList.remove('open'); document.getElementById('nav-hbg').classList.remove('x'); document.body.style.overflow=''; }
+window.addEventListener('resize',()=>{ if(window.innerWidth>1023)closeMobNav(); });
+
+// ════════════════════════════════════
+// HELPERS
+// ════════════════════════════════════
+function gv(id){ const el=document.getElementById(id); return el?el.value.trim():''; }
+
+// ════════════════════════════════════
+// SECURITY: HTML-escape any admin-entered text before injecting via innerHTML
+// (defense-in-depth against stored XSS if the database is ever written by
+// anything other than the trusted admin — see Firestore rules)
+// ════════════════════════════════════
+function esc(v){
+  return String(v==null?'':v).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+// For text dropped inside an inline onclick="fn('...')" handler: escape for the JS
+// single-quoted string first, then for the surrounding double-quoted HTML attribute.
+function escJsAttr(v){
+  const js = String(v==null?'':v).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\n/g,'\\n').replace(/\r/g,'');
+  return js.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ════════════════════════════════════
+// IMAGE STORE — كل صورة بمستند Firestore منفصل (مجاني بالكامل)
+// ════════════════════════════════════
+// imgCache: خريطة محلية { معرّف الصورة -> نص base64 } يتغذى من مجموعة portfolio_images
+let imgCache = {};
+const IMG_REF_PREFIX = 'img_';
+function isImgRef(v){ return typeof v==='string' && v.startsWith(IMG_REF_PREFIX); }
+// يحوّل أي قيمة مخزّنة (معرّف صورة أو رابط قديم) إلى src صالح للعرض مباشرة
+function resolveImg(v){
+  if(!v) return '';
+  if(isImgRef(v)) return imgCache[v] || '';
+  return v; // رابط عادي (توافقية مع بيانات قديمة كانت مخزّنة كرابط/base64 مباشرة)
+}
+window._startImgListener = function(){
+  if(!window._imgStoreReady || !window._onImgCollectionSnapshot) return;
+  window._onImgCollectionSnapshot(snap=>{
+    let changed = false;
+    snap.docChanges().forEach(ch=>{
+      if(ch.type==='removed'){ if(imgCache[ch.doc.id]!==undefined){ delete imgCache[ch.doc.id]; changed = true; } }
+      else {
+        const v = (ch.doc.data()||{}).data || '';
+        if(imgCache[ch.doc.id] !== v){ imgCache[ch.doc.id] = v; changed = true; }
+      }
+    });
+    // دفعة واحدة بدل إعادة رسم الصفحة كاملة مع كل صورة تصل
+    if(changed){ clearTimeout(window._imgRT); window._imgRT = setTimeout(()=>renderAll(), 120); }
+  }, err=>{ console.info('Image store not configured, running local mode.'); });
+};
+
+// دالة لضغط الصورة وتحويلها base64 (صغيرة بما يكفي لمستند Firestore واحد للصورة)
+function compressImage(file, callback) {
+  const MAXW = 1000, Q = 0.62;
+  const encode = (src, w0, h0) => {
+    let w = w0, h = h0;
+    if(w > MAXW){ h = Math.round((h * MAXW) / w); w = MAXW; }
+    const cvs = document.createElement('canvas'); cvs.width = w; cvs.height = h;
+    cvs.getContext('2d').drawImage(src, 0, 0, w, h);
+    callback(cvs.toDataURL('image/jpeg', Q));
+  };
+  const legacy = () => {
+    const r = new FileReader();
+    r.onerror = () => callback(null);
+    r.onload = e => {
+      const img = new Image();
+      img.onerror = () => callback(null);   // ملف تالف أو صيغة غير مدعومة: لا نعلّق الدفعة كلها
+      img.onload = () => encode(img, img.width, img.height);
+      img.src = e.target.result;
+    };
+    r.readAsDataURL(file);
+  };
+  // الطريقة السريعة: فك الترميز خارج الخيط الرئيسي وبدون تحويل الملف كله إلى base64
+  if(window.createImageBitmap){
+    createImageBitmap(file).then(bmp => { encode(bmp, bmp.width, bmp.height); if(bmp.close) bmp.close(); }).catch(legacy);
+  } else legacy();
+}
+
+function newImgId(){ return IMG_REF_PREFIX + Date.now() + '_' + Math.random().toString(36).slice(2,8); }
+
+// يخزّن الصورة كمستند Firestore مستقل ويرجّع معرّفها القصير (النص اللي نحفظه بالبيانات)
+async function saveImageSmart(base64){
+  const id = newImgId();
+  imgCache[id] = base64; // تحديث فوري محلي حتى تظهر الصورة بدون انتظار الشبكة
+  if(window._imgStoreReady && window._setImgDoc){
+    // ننتظر تأكيد السيرفر فعلاً (الصور تُرفع بالتوازي) حتى ما نعتبرها محفوظة وهي ما وصلت
+    try{ await window._setImgDoc(id, base64); }
+    catch(e){
+      console.warn('Image doc save failed:', e);
+      toast('⚠ تعذّر حفظ الصورة على السيرفر، اضغط «مزامنة الصور» لاحقاً');
+    }
+  }
+  return id;
+}
+
+// ════════════════════════════════════
+// UPLOAD GUARD — يمنع الحفظ قبل ما ترفع الصور فعلياً
+// (كانت المشكلة: يتم الضغط على "أضف/حفظ" قبل ما يخلص رفع الصور، فتنحفظ فارغة)
+// ════════════════════════════════════
+let _pendingUploads = new Set();
+function _lockDuring(tid, inp, busyTxt){
+  _pendingUploads.add(tid);
+  if(inp) inp.disabled = true;
+  const btn = inp ? inp.closest('.af')?.querySelector('.abtn') : null;
+  if(btn && !btn.dataset.origTxt){ btn.dataset.origTxt = btn.textContent; }
+  if(btn){ btn.disabled = true; btn.textContent = busyTxt; }
+  const saveBtn = document.getElementById('save-all-btn');
+  if(saveBtn){ saveBtn.disabled = true; }
+  return btn;
+}
+function _unlockAfter(tid, inp, btn){
+  _pendingUploads.delete(tid);
+  if(inp) inp.disabled = false;
+  if(btn){ btn.disabled = false; btn.textContent = btn.dataset.origTxt || btn.textContent; }
+  if(_pendingUploads.size === 0){
+    const saveBtn = document.getElementById('save-all-btn');
+    if(saveBtn) saveBtn.disabled = false;
+  }
+}
+function isUploadPending(){ return _pendingUploads.size > 0; }
+
+async function f2i(inp,tid){
+  if(!inp.files[0]) return;
+  const el = document.getElementById(tid); if(!el) return;
+  toast('⏳ جاري رفع الصورة...');
+  const btn = _lockDuring(tid, inp, '⏳ جاري رفع الصورة...');
+  compressImage(inp.files[0], async (base64) => {
+    if(!base64){ _unlockAfter(tid, inp, btn); return toast('⚠ تعذّر قراءة الصورة، جرّب ملفاً آخر'); }
+    const id = await saveImageSmart(base64);
+    el.value = id;
+    _unlockAfter(tid, inp, btn);
+    toast('✅ تم رفع الصورة، اضغط حفظ!');
+  });
+}
+
+function mf2i(inp,tid){
+  const files = Array.from(inp.files);
+  if(!files.length) return;
+  const total = files.length, results = new Array(total);
+  let next = 0, done = 0, failed = 0;
+  const btn = _lockDuring(tid, inp, `⏳ 0/${total}`);
+  toast(`⏳ جاري رفع ${total} صورة... لا تضغط حفظ إلا بعد ما تخلص`);
+  const progress = () => { if(btn) btn.textContent = `⏳ ${done}/${total}`; };
+  const compress = f => new Promise(res => { try{ compressImage(f, res); }catch(e){ res(null); } });
+  // عدد محدود من العمال: كل واحد يضغط صورة ثم يرفعها وينتقل للتالية (الضغط والرفع يتداخلان بدون ما نحمّل الذاكرة)
+  async function worker(){
+    while(next < total){
+      const i = next++;
+      const base64 = await compress(files[i]);
+      if(!base64){ failed++; done++; progress(); continue; }
+      const id = newImgId();
+      imgCache[id] = base64;
+      let ok = !(window._imgStoreReady && window._setImgDoc);
+      for(let t=0; !ok && t<2; t++){
+        try{ await window._setImgDoc(id, base64); ok = true; }catch(e){ console.warn('Image doc save failed:', e); }
+      }
+      if(!ok) failed++;
+      results[i] = id; done++; progress();
+    }
+  }
+  Promise.all(Array.from({length:Math.min(5,total)}, worker)).then(()=>{
+    const el = document.getElementById(tid);
+    if(el){
+      const ex = el.value;
+      const ids = results.filter(Boolean);
+      el.value = [...(ex ? ex.split('|').map(x => x.trim()).filter(Boolean) : []), ...ids].join(' | ');
+    }
+    _unlockAfter(tid, inp, btn);
+    toast(failed ? `⚠ تعذّر رفع ${failed} من ${total} — اضغط «مزامنة الصور» بعد الحفظ` : '✅ خلص رفع الصور، دحين اضغط حفظ!');
+  });
+}
+function toast(msg){
+  const t=document.createElement('div'); t.textContent=msg;
+  Object.assign(t.style,{position:'fixed',bottom:'66px',left:'50%',transform:'translateX(-50%)',background:'var(--red)',color:'var(--beige2)',fontFamily:'var(--fm)',fontSize:'10px',letterSpacing:'1px',padding:'10px 22px',zIndex:'9000',transition:'opacity .5s',opacity:'1',whiteSpace:'nowrap',borderRadius:'0'});
+  document.body.appendChild(t);
+  setTimeout(()=>{t.style.opacity='0';setTimeout(()=>t.remove(),500);},2400);
+}
+
+// ════════════════════════════════════
+// INIT
+// ════════════════════════════════════
+
+// ══ ADMIN v2 — tabs, overview, shortcuts ══
+const ADM_T={overview:'📊 نظرة عامة',profile:'👤 الملف الشخصي',photo:'📁 التصوير',projects:'🎓 المشاريع',certs:'🏅 الشهادات',exp:'💼 الخبرات',look:'🎨 المظهر',sec:'🔐 الأمان'};
+function goTab(k){
+  document.querySelectorAll('.apane').forEach(p=>p.classList.toggle('on',p.id==='pane-'+k));
+  document.querySelectorAll('.anav').forEach(b=>b.classList.toggle('on',b.dataset.t===k));
+  document.getElementById('a-ptitle').textContent=ADM_T[k]||'';
+  document.querySelector('.amain').scrollTop=0;
+}
+function goSub(i){
+  document.querySelectorAll('#pane-photo .asub').forEach((p,j)=>p.classList.toggle('on',j===i));
+  document.querySelectorAll('.asubbtn').forEach((b,j)=>b.classList.toggle('on',j===i));
+}
+function qa(t,sub,fid){ goTab(t); if(t==='photo')goSub(sub); setTimeout(()=>{const e=document.getElementById(fid);if(e)e.focus();},60); }
+function renderOverview(){
+  const box=document.getElementById('ov-stats'); if(!box)return;
+  const p=data.profile||{},F=data.folders||[],C=data.certs||[],X=data.experience||[];
+  const ph=F.reduce((n,f)=>n+(f.images||[]).length,0);
+  const S=[['📁','ألبوم',F.length,'photo'],['🖼','صورة',ph,'photo'],['🎓','مشروع',data.projects.length,'projects'],['🏅','شهادة',C.length,'certs'],['💼','خبرة',X.length,'exp']];
+  box.innerHTML=S.map(s=>`<button class="ovc" onclick="goTab('${s[3]}')"><span>${s[0]}</span><b>${s[2]}</b><small>${s[1]}</small></button>`).join('');
+  [['photo',F.length],['projects',data.projects.length],['certs',C.length],['exp',X.length]].forEach(([k,n])=>{const e=document.getElementById('b-'+k);if(e)e.textContent=n;});
+  const nc=F.filter(f=>!f.cover).length,ne=F.filter(f=>!(f.images||[]).length).length,ni=C.filter(c=>!c.img).length,so=v=>v&&v!=='#';
+  const L=[[!!p.photo,'الصورة الشخصية','profile'],[(p.bio||'').length>40,'النبذة الشخصية','profile'],[so(p.ig)||so(p.tw)||so(p.li),'روابط التواصل','profile'],
+    [!nc,nc?nc+' ألبوم بدون غلاف':'كل الألبومات لها غلاف','photo'],[!ne,ne?ne+' ألبوم فارغ':'كل الألبومات فيها صور','photo'],[!ni,ni?ni+' شهادة بدون صورة':'كل الشهادات موثّقة بصورة','certs']];
+  const d=L.filter(x=>x[0]).length,pc=Math.round(d/L.length*100);
+  document.getElementById('ov-pct').textContent=pc+'%'; document.getElementById('ov-bar').style.width=pc+'%';
+  document.getElementById('ov-chk').innerHTML=L.map(x=>`<button class="chk ${x[0]?'':'no'}" onclick="goTab('${x[2]}')"><i>${x[0]?'✓':'!'}</i>${x[1]}</button>`).join('');
+}
+const _ral=renderAdminLists; renderAdminLists=function(){ _ral(); renderOverview(); };
+const _oa=openAdmin; openAdmin=function(){ _oa(); goTab('overview'); goSub(0); };
+document.addEventListener('keydown',e=>{ if((e.ctrlKey||e.metaKey)&&e.key.toLowerCase()==='s'&&document.getElementById('ap').classList.contains('open')){ e.preventDefault(); saveAll(); } });
+
+applyLang();
+// ════ عدسة + بيانات: المؤشر إطار كاميرا يقرأ الموقع كبيانات EXIF ════
+(function(){
+  if(!matchMedia('(hover:hover) and (pointer:fine)').matches || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  const vf=document.createElement('div'); vf.id='vf';
+  vf.innerHTML='<i class="tl"></i><i class="tr"></i><i class="bl"></i><i class="br"></i><b></b><span class="hud"></span>';
+  const sh=document.createElement('div'); sh.id='vshot';
+  document.body.append(vf,sh);
+  const hud=vf.querySelector('.hud');
+  const SEL='.folder-card,.fv-item,.proj-card,.cert-card';
+  const KIND=[['folder-card','ALBUM'],['fv-item','PHOTO'],['proj-card','PROJECT'],['cert-card','CERT']];
+  const ISO=[100,200,400,800,1600,3200,6400], SHUT=[60,125,250,500,1000,2000];
+  let tx=innerWidth/2,ty=innerHeight/2,x=tx-32,y=ty-32,w=64,h=64,lock=null,kind='',ls=scrollY,sv=0,last='';
+  addEventListener('mousemove',e=>{
+    tx=e.clientX; ty=e.clientY; vf.style.opacity=1;
+    const el=e.target.closest?e.target.closest(SEL):null;
+    if(el!==lock){ lock=el; vf.classList.toggle('lock',!!el); kind=el?(KIND.find(k=>el.classList.contains(k[0]))||[0,''])[1]:''; }
+  },{passive:true});
+  document.addEventListener('mouseleave',()=>{ vf.style.opacity=0; });
+  addEventListener('click',()=>{ sh.classList.remove('fire'); void sh.offsetWidth; sh.classList.add('fire'); });
+  (function loop(){
+    let gx,gy,gw,gh;
+    if(lock){ const r=lock.getBoundingClientRect(); gx=r.left; gy=r.top; gw=r.width; gh=r.height; }
+    else { gx=tx-32; gy=ty-32; gw=64; gh=64; }
+    x+=(gx-x)*.22; y+=(gy-y)*.22; w+=(gw-w)*.22; h+=(gh-h)*.22;
+    vf.style.transform='translate('+x+'px,'+y+'px)'; vf.style.width=w+'px'; vf.style.height=h+'px';
+    const v=Math.abs(scrollY-ls); ls=scrollY; sv+=(v-sv)*.2;
+    const t=(kind?kind+' · ':'')+'f/'+(1.4+tx/innerWidth*14.6).toFixed(1)+' · 1/'+SHUT[Math.min(5,Math.floor(sv/5))]+' · ISO '+ISO[Math.min(6,Math.floor(ty/innerHeight*7))];
+    if(t!==last){ hud.textContent=t; last=t; }
+    requestAnimationFrame(loop);
+  })();
+})();
+
+// ═══ واجهة حيّة ═══
+let _lt=[], _roleTimer=null, _roleI=0, _roleHold=false;
+function setHeroName(id,val){
+  const el=document.getElementById(id); if(!el) return;
+  if(el.dataset.v===val && el.querySelector('.lt')) return;
+  el.dataset.v=val;
+  el.innerHTML=[...val].map((c,i)=>'<span class="lt" style="--i:'+i+'">'+(c===' '?'&nbsp;':esc(c))+'</span>').join('');
+  _ltMeasure();
+}
+function setHeroDeg(val){
+  const el=document.getElementById('hero-deg'); if(!el) return;
+  if(el.dataset.v===val) return; el.dataset.v=val;
+  el.innerHTML=val.split(' ').map((w,i)=>'<span class="w" style="--i:'+i+'">'+esc(w)+'</span>').join(' ');
+}
+function setRoles(val){
+  const el=document.getElementById('hero-tag'); if(!el) return;
+  if(el.dataset.v===val) return; el.dataset.v=val;
+  const parts=val.split(/[·•|،]/).map(x=>x.trim()).filter(Boolean);
+  el.innerHTML=parts.map((r,i)=>(i?'<i class="sep">·</i>':'')+'<span class="role">'+esc(r)+'</span>').join('');
+  const rs=[...el.querySelectorAll('.role')];
+  const focus=i=>{ _roleI=i; rs.forEach((x,j)=>x.classList.toggle('on',j===i)); };
+  rs.forEach((x,i)=>{ x.addEventListener('mouseenter',()=>{ _roleHold=true; focus(i); }); x.addEventListener('mouseleave',()=>{ _roleHold=false; }); });
+  clearInterval(_roleTimer); focus(0);
+  if(rs.length>1) _roleTimer=setInterval(()=>{ if(!_roleHold) focus((_roleI+1)%rs.length); },2400);
+}
+function _ltMeasure(){
+  setTimeout(()=>{ _lt=[...document.querySelectorAll('.hero-name .lt')].map(el=>{ const r=el.getBoundingClientRect(); return {el,x:r.left+r.width/2+scrollX,y:r.top+r.height/2+scrollY}; }); },3600);
+}
+(function(){
+  const hero=document.getElementById('hero'); if(!hero) return;
+  hero.classList.add('fxin'); setTimeout(()=>hero.classList.remove('fxin'),4200);
+  addEventListener('resize',_ltMeasure);
+  if(!matchMedia('(hover:hover) and (pointer:fine)').matches || matchMedia('(prefers-reduced-motion:reduce)').matches) return;
+  const sp=document.createElement('div'); sp.className='h-spot'; hero.prepend(sp);
+  let px=-999, py=-999, act=0;
+  hero.addEventListener('mousemove',e=>{
+    px=e.pageX; py=e.pageY; act=performance.now();
+    const r=hero.getBoundingClientRect(); hero.style.setProperty('--sx',(e.clientX-r.left)+'px'); hero.style.setProperty('--sy',(e.clientY-r.top)+'px');
+  },{passive:true});
+  hero.addEventListener('mouseleave',()=>{ px=-999; py=-999; act=performance.now(); });
+  (function loop(){
+    if(performance.now()-act<900 && _lt.length){
+      for(const o of _lt){
+        const dx=px-o.x, dy=py-o.y, d=Math.hypot(dx,dy), f=Math.max(0,1-d/190);
+        const e=o.el.style;
+        if(f>0){ e.setProperty('--mx',(dx/(d||1)*f*14).toFixed(1)+'px'); e.setProperty('--my',(dy/(d||1)*f*8-f*16).toFixed(1)+'px'); e.setProperty('--ms',(1+f*.28).toFixed(3)); e.setProperty('--gl',(f*26).toFixed(0)+'px'); }
+        else { e.removeProperty('--mx'); e.removeProperty('--my'); e.removeProperty('--ms'); e.removeProperty('--gl'); }
+      }
+    }
+    requestAnimationFrame(loop);
+  })();
+})();
+
+// ═══ محرّك الحركة: أورورا + شريط كلمات يتسارع مع التمرير + مغناطيس + موجة نقر ═══
+(function(){
+  const au=document.createElement('div'); au.id='aurora'; au.innerHTML='<i></i><i></i>'; document.body.prepend(au);
+  const hero=document.getElementById('hero');
+  const mq=document.createElement('div'); mq.className='marq'; mq.innerHTML='<div class="mq-track" id="mq-track"></div>';
+  if(hero) hero.after(mq);
+  renderMarq();
+  const tr=document.getElementById('mq-track');
+  let x=0, dir=-1, ls=scrollY, vel=0;
+  (function loop(){
+    const d=scrollY-ls; ls=scrollY;
+    if(d!==0) dir=d>0?-1:1;
+    vel+=(Math.min(Math.abs(d),60)-vel)*.12;
+    x+=dir*(.7+vel*.55);
+    const half=tr.scrollWidth/2||1;
+    if(x<=-half) x+=half; if(x>0) x-=half;
+    tr.style.transform='translate3d('+x+'px,0,0)';
+    requestAnimationFrame(loop);
+  })();
+  if(matchMedia('(hover:hover) and (pointer:fine)').matches){
+    const MAG='.hero-chip,.proj-link,.hero-scroll';
+    document.addEventListener('mousemove',e=>{
+      const el=e.target.closest&&e.target.closest(MAG);
+      if(el){ const r=el.getBoundingClientRect();
+        el.style.translate=((e.clientX-r.left-r.width/2)*.28)+'px '+((e.clientY-r.top-r.height/2)*.28)+'px'; }
+    },{passive:true});
+    document.addEventListener('mouseout',e=>{ const el=e.target.closest&&e.target.closest(MAG); if(el) el.style.translate=''; });
+  }
+  addEventListener('click',e=>{
+    const r=document.createElement('div'); r.className='vring'; r.style.left=e.clientX+'px'; r.style.top=e.clientY+'px';
+    document.body.appendChild(r); setTimeout(()=>r.remove(),750);
+  });
+})();
+
+// مقابض العدسة: حلقة تقدّم + تدريج يدور + عدّاد REC
+(function(){
+  const hs=document.querySelector('.hero-stats'); if(!hs) return;
+  const svg='<svg class="dial" viewBox="0 0 120 120" aria-hidden="true"><circle class="d-ticks" cx="60" cy="60" r="55"/><circle class="d-track" cx="60" cy="60" r="44"/><circle class="d-arc" cx="60" cy="60" r="44" pathLength="100"/></svg>';
+  hs.querySelectorAll('.stt').forEach(st=>{
+    st.insertAdjacentHTML('afterbegin',svg);
+    st.addEventListener('click',()=>{ st.style.setProperty('--p',0); setTimeout(()=>st.style.setProperty('--p',st.dataset.p||0),90); });
+  });
+  window.updateDials=function(){
+    const v=[(data.folders||[]).length,(data.projects||[]).length,(data.certs||[]).length];
+    const wait=Math.max(0,2400-performance.now());
+    hs.querySelectorAll('.stt').forEach((st,i)=>{
+      const n=v[i]||0, goal=Math.max(10,Math.ceil(n/10)*10);
+      st.dataset.p=Math.round(n/goal*100);
+      setTimeout(()=>st.style.setProperty('--p',st.dataset.p),wait);
+    });
+  };
+  const r=document.createElement('div'); r.className='rec-line'; hs.after(r);
+  const t0=Date.now(), pad=n=>String(n).padStart(2,'0');
+  const tick=()=>{ const d=Math.floor((Date.now()-t0)/1000);
+    r.innerHTML='<i></i>REC '+pad(Math.floor(d/3600))+':'+pad(Math.floor(d/60)%60)+':'+pad(d%60)+' · RAW'; };
+  tick(); setInterval(tick,1000);
+})();
+
+// شريط تقدّم التمرير
+(function(){
+  const b=document.createElement('div'); b.id='sprog'; document.body.appendChild(b);
+  let t=false;
+  addEventListener('scroll',()=>{ if(t)return; t=true; requestAnimationFrame(()=>{
+    const h=document.documentElement.scrollHeight-innerHeight;
+    b.style.transform='scaleX('+(h>0?Math.min(1,scrollY/h):0)+')'; t=false; });
+  },{passive:true});
+})();
+
+// ═ إقلاع فوري: نعرض آخر نسخة محفوظة بالجهاز قبل ما تصل أي شبكة ═
+try{
+  const _c = JSON.parse(localStorage.getItem('pf_data_v1') || 'null');
+  if(_c && Array.isArray(_c.projects) && Array.isArray(_c.folders)){
+    ['profile','folders','projects','certs','experience','colors','fonts'].forEach(k=>{ if(_c[k]) data[k]=_c[k]; });
+    window._hadCache = true; window._lastSig = JSON.stringify(_c);
+    _markFirstDataReady();
+  }
+}catch(e){}
+renderAll();
+revealSetup();
+</script>
+</body>
+</html>
